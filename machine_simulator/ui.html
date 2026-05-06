@@ -1,0 +1,747 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Industrial Screw Air Compressor - Simulation</title>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #FAF7F2;
+  --panel: #FFFFFF;
+  --panel-hover: #FFFFFF;
+  --border: #E8E2D9;
+  --border-light: #E8E2D9;
+  --text: #1A1612;
+  --text-dim: #1A1612;
+  --text-muted: #7A6F65;
+  --blue: #2D6A4F;
+  --blue-dim: #2D6A4F;
+  --orange: #C9622F;
+  --green: #2D6A4F;
+  --red: #C9622F;
+  --cyan: #2D6A4F;
+  --yellow: #C9622F;
+  --font: 'DM Sans', sans-serif;
+  --mono: 'DM Sans', sans-serif;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: var(--font);
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: grid;
+  grid-template-columns: 340px 1fr;
+  grid-template-rows: 1fr;
+  overflow: hidden;
+}
+
+/* ─── LEFT PANEL ─── */
+.panel {
+  background: var(--panel);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.panel-header {
+  padding: 20px 24px;
+  border-bottom: 1px solid var(--border);
+}
+.panel-header h1 {
+  font-family: 'DM Serif Display', serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: var(--text);
+  margin-bottom: 4px;
+}
+.panel-header p {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+.controls {
+  flex: 1;
+  padding: 20px 24px;
+  overflow-y: auto;
+}
+.section-title {
+  font-size: 0.65rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  margin-bottom: 16px;
+  font-weight: 700;
+}
+.ctrl {
+  margin-bottom: 24px;
+}
+.ctrl-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+.ctrl-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #111827;
+}
+.ctrl-val {
+  font-family: var(--mono);
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #2563EB;
+}
+input[type=range] {
+  appearance: none;
+  width: 100%;
+  height: 6px;
+  background: #CBD5E1;
+  border-radius: 3px;
+  outline: none;
+  cursor: pointer;
+}
+input[type=range]::-webkit-slider-thumb {
+  appearance: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #2563EB;
+  border: 3px solid #FFFFFF;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.15);
+  cursor: pointer;
+}
+.ctrl-range {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  font-family: var(--mono);
+  margin-top: 6px;
+}
+.panel-footer {
+  padding: 14px 24px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--red);
+}
+.status-dot.on {
+  background: var(--green);
+}
+
+/* ─── MAIN AREA ─── */
+.main {
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+}
+.main-header {
+  padding: 14px 28px;
+  border-bottom: 1px solid #E8E4DE;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background: #FEFCF8;
+  z-index: 5;
+}
+.main-header h2 {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #374151;
+}
+.main-header .tag {
+  font-size: 0.65rem;
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: #16A34A;
+  color: #FFFFFF;
+  font-weight: 600;
+}
+
+/* ─── SVG CANVAS ─── */
+.canvas-wrap {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  background: #FEFDFB;
+}
+.canvas-wrap::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(180,170,155,0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(180,170,155,0.06) 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+#compressor-svg {
+  width: 90%;
+  max-width: 1100px;
+  height: auto;
+  transition: transform 0.04s linear;
+}
+
+/* ─── TELEMETRY ─── */
+.telemetry {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  background: #FFFFFF;
+  border: 1px solid #E8E4DE;
+  border-radius: 12px;
+  padding: 18px 22px;
+  width: 340px;
+}
+.telemetry-title {
+  font-size: 0.6rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+  margin-bottom: 14px;
+  font-weight: 700;
+}
+.tele-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.tele-item {
+  padding: 10px 12px;
+  background: #FAF9F6;
+  border-radius: 8px;
+  border: 1px solid #E8E4DE;
+}
+.tele-label {
+  font-size: 0.6rem;
+  color: #64748B;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 4px;
+}
+.tele-val {
+  font-family: var(--mono);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+.tele-unit {
+  font-size: 0.7rem;
+  color: #64748B;
+  font-weight: 400;
+}
+
+/* ─── LABELS ON SVG ─── */
+.svg-label {
+  font-family: var(--font);
+  font-size: 9px;
+  fill: var(--text-muted);
+  text-anchor: middle;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.svg-label-big {
+  font-family: var(--font);
+  font-size: 11px;
+  fill: var(--text-dim);
+  text-anchor: middle;
+  font-weight: 700;
+}
+
+/* ─── PIPE ANIMATIONS ─── */
+.air-flow {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 4;
+  stroke-dasharray: 12 8;
+  stroke-linecap: round;
+  opacity: 0.7;
+  animation: flowRight 1.5s linear infinite;
+}
+.air-flow-down {
+  fill: none;
+  stroke: var(--cyan);
+  stroke-width: 4;
+  stroke-dasharray: 12 8;
+  stroke-linecap: round;
+  opacity: 0.7;
+  animation: flowDown 1.5s linear infinite;
+}
+.oil-flow {
+  fill: none;
+  stroke: var(--yellow);
+  stroke-width: 3;
+  stroke-dasharray: 8 6;
+  stroke-linecap: round;
+  opacity: 0.6;
+  animation: flowRight 2s linear infinite;
+}
+@keyframes flowRight { to { stroke-dashoffset: -40; } }
+@keyframes flowDown { to { stroke-dashoffset: -40; } }
+@keyframes rotorSpin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+</style>
+</head>
+<body>
+
+<!-- LEFT PANEL -->
+<div class="panel">
+  <div class="panel-header">
+    <h1>Screw Air Compressor</h1>
+    <p>Rotary Screw Type &bull; Oil-Injected &bull; Single Stage</p>
+  </div>
+  <div class="controls">
+    <div class="section-title">Input Parameters</div>
+
+    <div class="ctrl">
+      <div class="ctrl-top">
+        <span class="ctrl-name">Supply Voltage</span>
+        <span class="ctrl-val"><span id="val-volt">170</span> V</span>
+      </div>
+      <input type="range" id="in-volt" min="0" max="300" value="170" step="1">
+      <div class="ctrl-range"><span>0</span><span>300 V</span></div>
+    </div>
+
+    <div class="ctrl">
+      <div class="ctrl-top">
+        <span class="ctrl-name">Rotor Speed</span>
+        <span class="ctrl-val"><span id="val-rotate">450</span> RPM</span>
+      </div>
+      <input type="range" id="in-rotate" min="0" max="3000" value="450" step="10">
+      <div class="ctrl-range"><span>0</span><span>3000 RPM</span></div>
+    </div>
+
+    <div class="ctrl">
+      <div class="ctrl-top">
+        <span class="ctrl-name">Discharge Pressure</span>
+        <span class="ctrl-val"><span id="val-press">100</span> psi</span>
+      </div>
+      <input type="range" id="in-press" min="0" max="250" value="100" step="1">
+      <div class="ctrl-range"><span>0</span><span>250 psi</span></div>
+    </div>
+
+    <div class="ctrl">
+      <div class="ctrl-top">
+        <span class="ctrl-name">Vibration</span>
+        <span class="ctrl-val"><span id="val-vib">40</span> mm/s</span>
+      </div>
+      <input type="range" id="in-vib" min="0" max="150" value="40" step="0.5">
+      <div class="ctrl-range"><span>0</span><span>150 mm/s</span></div>
+    </div>
+  </div>
+  <div class="panel-footer">
+    <div class="status-dot" id="conn-dot"></div>
+    <span id="conn-text">Disconnected</span>
+  </div>
+</div>
+
+<!-- MAIN AREA -->
+<div class="main">
+  <div class="main-header">
+    <h2>System Schematic &mdash; Process Flow Diagram</h2>
+    <span class="tag">LIVE SIMULATION</span>
+  </div>
+
+  <div class="canvas-wrap">
+    <svg id="compressor-svg" viewBox="0 0 1100 520" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <linearGradient id="metalGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#2B4C6F"/>
+          <stop offset="50%" stop-color="#1F3A55"/>
+          <stop offset="100%" stop-color="#162D44"/>
+        </linearGradient>
+        <linearGradient id="motorGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+          <stop offset="0%" stop-color="#2B4050" id="motorGradStart"/>
+          <stop offset="100%" stop-color="#1A2D3D" id="motorGradEnd"/>
+        </linearGradient>
+        <linearGradient id="tankGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stop-color="#2D5A3A"/>
+          <stop offset="100%" stop-color="#1A3D28"/>
+        </linearGradient>
+        <linearGradient id="coolerGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stop-color="#1A3550"/>
+          <stop offset="100%" stop-color="#0F2840"/>
+        </linearGradient>
+      </defs>
+
+      <!-- ═══ PIPES (Background layer) ═══ -->
+      <!-- Air inlet pipe -->
+      <path d="M 30 200 L 95 200" stroke="#8B9DAF" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <!-- Motor to compressor shaft -->
+      <rect x="255" y="195" width="60" height="14" rx="3" fill="#7A8A9A"/>
+      <!-- Compressor to separator pipe -->
+      <path d="M 480 200 L 560 200" stroke="#8B9DAF" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <!-- Separator to cooler pipe -->
+      <path d="M 700 200 L 770 200" stroke="#8B9DAF" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <!-- Cooler to outlet pipe -->
+      <path d="M 940 200 L 1070 200" stroke="#8B9DAF" stroke-width="10" fill="none" stroke-linecap="round"/>
+      <!-- Oil return pipe (separator back to compressor) -->
+      <path d="M 630 300 L 630 380 L 400 380 L 400 280" stroke="#C9622F" stroke-width="6" fill="none" stroke-linecap="round" stroke-linejoin="round" opacity="0.4"/>
+
+      <!-- ═══ AIR FLOW ANIMATIONS ═══ -->
+      <path d="M 30 200 L 95 200" class="air-flow" id="flow-inlet"/>
+      <path d="M 480 200 L 560 200" class="air-flow" id="flow-comp-sep"/>
+      <path d="M 700 200 L 770 200" class="air-flow" id="flow-sep-cool"/>
+      <path d="M 940 200 L 1070 200" class="air-flow" id="flow-outlet"/>
+      <path d="M 630 300 L 630 380 L 400 380 L 400 280" class="oil-flow" id="flow-oil"/>
+
+      <!-- ═══ 1. AIR INLET FILTER ═══ -->
+      <g id="inlet-filter">
+        <rect x="10" y="170" width="30" height="60" rx="6" fill="#2B4C6F" stroke="#4A90D9" stroke-width="2"/>
+        <!-- Filter lines -->
+        <line x1="16" y1="180" x2="34" y2="180" stroke="#2a5a72" stroke-width="1.5"/>
+        <line x1="16" y1="188" x2="34" y2="188" stroke="#2a5a72" stroke-width="1.5"/>
+        <line x1="16" y1="196" x2="34" y2="196" stroke="#2a5a72" stroke-width="1.5"/>
+        <line x1="16" y1="204" x2="34" y2="204" stroke="#2a5a72" stroke-width="1.5"/>
+        <line x1="16" y1="212" x2="34" y2="212" stroke="#2a5a72" stroke-width="1.5"/>
+        <line x1="16" y1="220" x2="34" y2="220" stroke="#2a5a72" stroke-width="1.5"/>
+        <!-- Arrow in -->
+        <polygon points="5,200 15,194 15,206" fill="var(--cyan)" opacity="0.7"/>
+        <text x="25" y="250" class="svg-label">Air</text>
+        <text x="25" y="262" class="svg-label">Inlet</text>
+      </g>
+
+      <!-- ═══ 2. SUCTION VALVE ═══ -->
+      <g id="suction-valve">
+        <rect x="55" y="185" width="40" height="30" rx="4" fill="#2B4C6F" stroke="#4A90D9" stroke-width="2"/>
+        <polygon points="65,200 85,192 85,208" fill="#5BC0EB" opacity="0.9"/>
+        <text x="75" y="232" class="svg-label">Suction</text>
+        <text x="75" y="244" class="svg-label">Valve</text>
+      </g>
+
+      <!-- ═══ 3. ELECTRIC MOTOR ═══ -->
+      <g id="motor">
+        <rect x="110" y="140" width="145" height="120" rx="10" fill="url(#motorGrad)" stroke="#E8A838" stroke-width="3"/>
+        <!-- Motor windings -->
+        <circle cx="182" cy="200" r="42" fill="none" stroke="#E8A838" stroke-width="12" stroke-dasharray="14 8" opacity="0.8" id="motor-coil"/>
+        <!-- Rotor -->
+        <g id="motor-rotor" style="transform-origin: 182px 200px;">
+          <circle cx="182" cy="200" r="28" fill="#1F3044" stroke="#5A8AB5" stroke-width="3"/>
+          <circle cx="182" cy="200" r="8" fill="#0D1B2A" stroke="#4A7A9A" stroke-width="2"/>
+          <rect x="178" y="172" width="8" height="20" rx="2" fill="#7AACCC"/>
+          <rect x="178" y="208" width="8" height="20" rx="2" fill="#7AACCC"/>
+          <rect x="154" y="196" width="20" height="8" rx="2" fill="#7AACCC"/>
+          <rect x="190" y="196" width="20" height="8" rx="2" fill="#7AACCC"/>
+        </g>
+        <!-- Motor label -->
+        <text x="182" y="280" class="svg-label-big">Electric Motor</text>
+        <!-- Cooling fins -->
+        <rect x="112" y="148" width="4" height="104" rx="1" fill="#3D6080"/>
+        <rect x="120" y="148" width="3" height="104" rx="1" fill="#3D6080"/>
+        <rect x="127" y="148" width="3" height="104" rx="1" fill="#3D6080"/>
+      </g>
+
+      <!-- ═══ 4. SCREW COMPRESSOR ELEMENT ═══ -->
+      <g id="compressor">
+        <rect x="315" y="130" width="165" height="140" rx="12" fill="url(#metalGrad)" stroke="#4a7090" stroke-width="3"/>
+        <!-- Twin screw rotors -->
+        <g id="male-rotor" style="transform-origin: 370px 190px;">
+          <circle cx="370" cy="190" r="30" fill="#1F3044" stroke="#2D6A4F" stroke-width="2.5"/>
+          <!-- Screw lobes (male - 4 lobes) -->
+          <path d="M 370 190 L 370 160" stroke="#3DA67A" stroke-width="5" stroke-linecap="round"/>
+          <path d="M 370 190 L 400 190" stroke="#3DA67A" stroke-width="5" stroke-linecap="round"/>
+          <path d="M 370 190 L 370 220" stroke="#3DA67A" stroke-width="5" stroke-linecap="round"/>
+          <path d="M 370 190 L 340 190" stroke="#3DA67A" stroke-width="5" stroke-linecap="round"/>
+          <circle cx="370" cy="190" r="8" fill="#2D6A4F" stroke="#3DA67A" stroke-width="2"/>
+        </g>
+        <g id="female-rotor" style="transform-origin: 420px 210px;">
+          <circle cx="420" cy="210" r="26" fill="#1F3044" stroke="#5BA3D9" stroke-width="2"/>
+          <!-- Screw grooves (female - 6 grooves) -->
+          <path d="M 420 210 L 420 184" stroke="#5BA3D9" stroke-width="4" stroke-linecap="round"/>
+          <path d="M 420 210 L 442 198" stroke="#5BA3D9" stroke-width="4" stroke-linecap="round"/>
+          <path d="M 420 210 L 442 222" stroke="#5BA3D9" stroke-width="4" stroke-linecap="round"/>
+          <path d="M 420 210 L 420 236" stroke="#5BA3D9" stroke-width="4" stroke-linecap="round"/>
+          <path d="M 420 210 L 398 222" stroke="#5BA3D9" stroke-width="4" stroke-linecap="round"/>
+          <path d="M 420 210 L 398 198" stroke="#5BA3D9" stroke-width="4" stroke-linecap="round"/>
+          <circle cx="420" cy="210" r="6" fill="#2B4C6F" stroke="#5BA3D9" stroke-width="2"/>
+        </g>
+        <!-- Compression chamber outline -->
+        <rect x="340" y="160" width="120" height="70" rx="8" fill="none" stroke="#3a6a82" stroke-width="1.5" stroke-dasharray="4 3" opacity="0.5"/>
+        <text x="397" y="290" class="svg-label-big">Screw Element</text>
+        <text x="397" y="304" class="svg-label">(Twin Rotor)</text>
+      </g>
+
+      <!-- ═══ 5. OIL SEPARATOR VESSEL ═══ -->
+      <g id="separator">
+        <rect x="560" y="130" width="140" height="170" rx="14" fill="#2A1F1A" stroke="#C9622F" stroke-width="3"/>
+        <!-- Separator internals -->
+        <ellipse cx="630" cy="155" rx="50" ry="8" fill="none" stroke="#C9622F" stroke-width="1.5"/>
+        <!-- Oil level -->
+        <rect x="575" y="240" width="110" height="45" rx="4" fill="#5C3D1E" opacity="0.5"/>
+        <rect x="575" y="260" width="110" height="25" rx="4" fill="#C9622F" opacity="0.4" id="oil-level"/>
+        <!-- Separator element -->
+        <rect x="590" y="170" width="80" height="50" rx="6" fill="none" stroke="#E8A838" stroke-width="2" stroke-dasharray="5 3"/>
+        <text x="630" y="198" class="svg-label" fill="#E8A838">SEPARATOR</text>
+        <!-- Min pressure valve -->
+        <circle cx="700" cy="200" r="10" fill="#3D2A1A" stroke="#E8A838" stroke-width="2"/>
+        <text x="700" y="203" style="font-size:7px; fill:#E8A838; text-anchor:middle; font-weight:bold;">MPV</text>
+        <text x="630" y="320" class="svg-label-big">Oil Separator</text>
+        <text x="630" y="334" class="svg-label">Vessel</text>
+      </g>
+
+      <!-- ═══ 6. AFTERCOOLER ═══ -->
+      <g id="aftercooler">
+        <rect x="770" y="150" width="170" height="100" rx="10" fill="url(#coolerGrad)" stroke="#4A90D9" stroke-width="3"/>
+        <!-- Cooling fins -->
+        <line x1="790" y1="165" x2="790" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="805" y1="165" x2="805" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="820" y1="165" x2="820" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="835" y1="165" x2="835" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="850" y1="165" x2="850" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="865" y1="165" x2="865" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="880" y1="165" x2="880" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="895" y1="165" x2="895" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="910" y1="165" x2="910" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <line x1="925" y1="165" x2="925" y2="235" stroke="#4A90D9" stroke-width="2"/>
+        <!-- Fan symbol -->
+        <circle cx="855" cy="200" r="20" fill="none" stroke="#5BC0EB" stroke-width="1.5" opacity="0.7"/>
+        <g id="cooler-fan" style="transform-origin: 855px 200px;">
+          <path d="M 855 200 L 855 182" stroke="#5BC0EB" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+          <path d="M 855 200 L 870 210" stroke="#5BC0EB" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+          <path d="M 855 200 L 840 210" stroke="#5BC0EB" stroke-width="3" stroke-linecap="round" opacity="0.8"/>
+        </g>
+        <text x="855" y="270" class="svg-label-big">Aftercooler</text>
+      </g>
+
+      <!-- ═══ 7. DISCHARGE OUTLET ═══ -->
+      <g id="outlet">
+        <rect x="1040" y="180" width="40" height="40" rx="6" fill="#1A3D2E" stroke="#2D6A4F" stroke-width="2.5"/>
+        <polygon points="1080,200 1070,194 1070,206" fill="#3DA67A" opacity="0.9"/>
+        <text x="1060" y="238" class="svg-label" fill="#3DA67A">Compressed</text>
+        <text x="1060" y="250" class="svg-label" fill="#3DA67A">Air Out</text>
+      </g>
+
+      <!-- ═══ PRESSURE GAUGE ═══ -->
+      <g id="pressure-gauge">
+        <circle cx="520" cy="130" r="22" fill="#1F3044" stroke="#5BA3D9" stroke-width="2"/>
+        <circle cx="520" cy="130" r="18" fill="none" stroke="#3D6080" stroke-width="1"/>
+        <line x1="520" y1="130" x2="520" y2="114" stroke="#E84040" stroke-width="2" stroke-linecap="round" id="pressure-needle"/>
+        <text x="520" y="165" class="svg-label">PSI</text>
+      </g>
+
+      <!-- ═══ TEMPERATURE INDICATOR ═══ -->
+      <g id="temp-indicator">
+        <rect x="230" y="100" width="30" height="12" rx="3" fill="#1F3044" stroke="#E84040" stroke-width="1.5"/>
+        <text x="245" y="109" style="font-family:var(--mono); font-size:7px; fill:#E84040; text-anchor:middle; font-weight:700;" id="temp-display">25°C</text>
+      </g>
+
+      <!-- ═══ VIBRATION INDICATOR ═══ -->
+      <g id="vib-indicator">
+        <rect x="315" y="100" width="40" height="12" rx="3" fill="#1F3044" stroke="#E8A838" stroke-width="1.5"/>
+        <text x="335" y="109" style="font-family:var(--mono); font-size:7px; fill:#E8A838; text-anchor:middle; font-weight:700;" id="vib-display">40 mm/s</text>
+      </g>
+
+      <!-- ═══ FLOW DIRECTION ARROWS ═══ -->
+      <polygon points="50,197 58,193 58,201" fill="var(--cyan)" opacity="0.5"/>
+      <polygon points="510,197 518,193 518,201" fill="var(--cyan)" opacity="0.5"/>
+      <polygon points="730,197 738,193 738,201" fill="var(--cyan)" opacity="0.5"/>
+      <polygon points="970,197 978,193 978,201" fill="var(--cyan)" opacity="0.5"/>
+
+      <!-- ═══ BASE / SKID ═══ -->
+      <rect x="80" y="350" width="960" height="12" rx="3" fill="#3D4F5F" stroke="#5A7080" stroke-width="1.5"/>
+      <rect x="100" y="362" width="20" height="20" rx="3" fill="#2B3D4D" stroke="#5A7080" stroke-width="1"/>
+      <rect x="300" y="362" width="20" height="20" rx="3" fill="#2B3D4D" stroke="#5A7080" stroke-width="1"/>
+      <rect x="600" y="362" width="20" height="20" rx="3" fill="#2B3D4D" stroke="#5A7080" stroke-width="1"/>
+      <rect x="900" y="362" width="20" height="20" rx="3" fill="#2B3D4D" stroke="#5A7080" stroke-width="1"/>
+      <rect x="1000" y="362" width="20" height="20" rx="3" fill="#2B3D4D" stroke="#5A7080" stroke-width="1"/>
+    </svg>
+  </div>
+
+  <!-- TELEMETRY PANEL -->
+  <div class="telemetry">
+    <div class="telemetry-title">Sensor Readings (Real-Time)</div>
+    <div class="tele-grid">
+      <div class="tele-item">
+        <div class="tele-label">Voltage</div>
+        <div class="tele-val" style="color:var(--orange)"><span id="out-volt">0</span> <span class="tele-unit">V</span></div>
+      </div>
+      <div class="tele-item">
+        <div class="tele-label">Rotation</div>
+        <div class="tele-val" style="color:var(--blue)"><span id="out-rotate">0</span> <span class="tele-unit">RPM</span></div>
+      </div>
+      <div class="tele-item">
+        <div class="tele-label">Pressure</div>
+        <div class="tele-val" style="color:var(--green)"><span id="out-press">0</span> <span class="tele-unit">bar</span></div>
+      </div>
+      <div class="tele-item">
+        <div class="tele-label">Vibration</div>
+        <div class="tele-val" style="color:var(--red)"><span id="out-vib">0</span> <span class="tele-unit">mm/s</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ─── Controls ───
+const sliders = {
+  volt: { el: document.getElementById('in-volt'), label: document.getElementById('val-volt') },
+  rotate: { el: document.getElementById('in-rotate'), label: document.getElementById('val-rotate') },
+  press: { el: document.getElementById('in-press'), label: document.getElementById('val-press') },
+  vib: { el: document.getElementById('in-vib'), label: document.getElementById('val-vib') },
+};
+const outs = {
+  volt: document.getElementById('out-volt'),
+  rotate: document.getElementById('out-rotate'),
+  press: document.getElementById('out-press'),
+  vib: document.getElementById('out-vib'),
+};
+
+Object.keys(sliders).forEach(k => {
+  sliders[k].el.addEventListener('input', () => {
+    sliders[k].label.textContent = sliders[k].el.value;
+    sendParams();
+  });
+});
+
+let sendTimer;
+function sendParams() {
+  clearTimeout(sendTimer);
+  sendTimer = setTimeout(() => {
+    fetch('/api/params', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        volt: parseFloat(sliders.volt.el.value),
+        rotate: parseFloat(sliders.rotate.el.value),
+        pressure: parseFloat(sliders.press.el.value),
+        vibration: parseFloat(sliders.vib.el.value)
+      })
+    });
+  }, 80);
+}
+
+// ─── WebSocket ───
+const dot = document.getElementById('conn-dot');
+const connText = document.getElementById('conn-text');
+const svg = document.getElementById('compressor-svg');
+const motorGradStart = document.getElementById('motorGradStart');
+const tempDisplay = document.getElementById('temp-display');
+const vibDisplay = document.getElementById('vib-display');
+const pressureNeedle = document.getElementById('pressure-needle');
+
+let currentRpm = 0;
+
+function connect() {
+  const ws = new WebSocket(`ws://${location.host}/ws`);
+  ws.onopen = () => { dot.classList.add('on'); connText.textContent = 'Live'; };
+  ws.onclose = () => { dot.classList.remove('on'); connText.textContent = 'Offline'; setTimeout(connect, 2000); };
+  ws.onmessage = (e) => {
+    const d = JSON.parse(e.data);
+    outs.volt.textContent = d.volt.toFixed(1);
+    outs.rotate.textContent = d.rotate.toFixed(0);
+    outs.press.textContent = d.pressure.toFixed(1);
+    outs.vib.textContent = d.vibration.toFixed(1);
+
+    currentRpm = d.rotate;
+
+    // Temperature display
+    if (d.temperature !== undefined) {
+      tempDisplay.textContent = d.temperature.toFixed(0) + '°C';
+      const tempHeat = Math.min(1, Math.max(0, (d.temperature - 25) / 100));
+      tempDisplay.style.fill = tempHeat > 0.7 ? 'var(--red)' : tempHeat > 0.4 ? 'var(--orange)' : 'var(--green)';
+    }
+
+    // Vibration display
+    vibDisplay.textContent = d.vibration.toFixed(0) + ' mm/s';
+    vibDisplay.style.fill = d.vibration > 80 ? 'var(--red)' : d.vibration > 50 ? 'var(--orange)' : 'var(--green)';
+
+    // Motor heat color
+    const heat = Math.min(1, Math.max(0, (d.volt - 150) / 100));
+    const r = Math.floor(42 + heat * 120);
+    const g = Math.floor(64 - heat * 20);
+    const b = Math.floor(96 - heat * 40);
+    motorGradStart.style.stopColor = `rgb(${r}, ${g}, ${b})`;
+
+    // Pressure needle rotation (0-250 bar maps to -90 to +90 degrees)
+    const needleAngle = -90 + (d.pressure / 250) * 180;
+    pressureNeedle.setAttribute('transform', `rotate(${needleAngle} 520 130)`);
+
+    // Vibration shake
+    if (d.vibration > 50) {
+      const intensity = (d.vibration - 50) / 30;
+      const dx = (Math.random() - 0.5) * intensity * 2;
+      const dy = (Math.random() - 0.5) * intensity * 2;
+      svg.style.transform = `translate(${dx}px, ${dy}px)`;
+    } else {
+      svg.style.transform = 'translate(0,0)';
+    }
+
+    // Flow animation speed based on pressure
+    const flowSpeed = d.pressure < 5 ? 0 : Math.max(0.3, 150 / d.pressure);
+    document.querySelectorAll('.air-flow, .air-flow-down').forEach(el => {
+      if (flowSpeed === 0) {
+        el.style.opacity = '0';
+      } else {
+        el.style.opacity = String(Math.min(0.9, d.pressure / 120));
+        el.style.animationDuration = flowSpeed + 's';
+      }
+    });
+
+    // Oil flow
+    const oilSpeed = currentRpm < 50 ? 0 : Math.max(0.5, 2000 / currentRpm);
+    document.querySelectorAll('.oil-flow').forEach(el => {
+      if (oilSpeed === 0) {
+        el.style.opacity = '0';
+      } else {
+        el.style.opacity = '0.5';
+        el.style.animationDuration = oilSpeed + 's';
+      }
+    });
+  };
+}
+
+// ─── Rotor Animation ───
+let rotorAngle = 0;
+let lastFrame = performance.now();
+
+function animateRotors() {
+  const now = performance.now();
+  const dt = (now - lastFrame) / 1000;
+  lastFrame = now;
+
+  if (currentRpm > 10) {
+    const degreesPerSec = currentRpm * 6; // RPM to deg/s
+    rotorAngle = (rotorAngle + degreesPerSec * dt) % 360;
+
+    // Motor rotor
+    const motorRotor = document.getElementById('motor-rotor');
+    if (motorRotor) motorRotor.style.transform = `rotate(${rotorAngle}deg)`;
+
+    // Male rotor (compressor)
+    const maleRotor = document.getElementById('male-rotor');
+    if (maleRotor) maleRotor.style.transform = `rotate(${rotorAngle}deg)`;
+
+    // Female rotor (opposite direction, different ratio)
+    const femaleRotor = document.getElementById('female-rotor');
+    if (femaleRotor) femaleRotor.style.transform = `rotate(${-rotorAngle * 0.67}deg)`;
+
+    // Cooler fan
+    const fan = document.getElementById('cooler-fan');
+    if (fan) fan.style.transform = `rotate(${rotorAngle * 1.5}deg)`;
+  }
+
+  requestAnimationFrame(animateRotors);
+}
+
+connect();
+requestAnimationFrame(animateRotors);
+</script>
+</body>
+</html>
