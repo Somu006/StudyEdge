@@ -124,7 +124,9 @@ async def broadcast_sensor_data():
                         cols_to_use = ["volt", "rotate", "pressure", "vibration"]
                         for col in cols_to_use:
                             df[f"{col}_mean"] = df[col].mean()
-                            df[f"{col}_std"] = df[col].std()
+                            # Add epsilon to avoid std=0 when window is constant
+                            std_val = df[col].std()
+                            df[f"{col}_std"]  = max(float(std_val), 1e-6)
                         
                         # Exact column order matching the scaler
                         current_features = [
@@ -151,51 +153,48 @@ async def broadcast_sensor_data():
                         current_smooth_rul = (alpha * rul_clipped) + ((1 - alpha) * current_smooth_rul)
                         
                         # ─── MAP TO COMPRESSOR LIFESPAN ───
-                        # The ML model gives a health score (higher = healthier)
-                        # We combine it with a physics-based degradation factor
-                        # 
-                        # Industrial screw compressor assumptions:
-                        #   - New machine: 15-20 years RUL
-                        #   - Normal wear: 10-15 years
-                        #   - Degraded: 2-8 years
-                        #   - Critical fault: days to months
-                        #
-                        # Ideal parameters: volt=170, rotate=450, pressure=100, vibration=40
+                        # Model raw output range: ~0 (critical) to ~1300 (healthy)
+                        # Calibrated from actual model output on normal readings (~1286)
                         
-                        MAX_LIFE_YEARS = 18.0  # Brand new compressor max
+                        MAX_LIFE_YEARS = 18.0   # Brand new compressor max
+                        MODEL_MAX      = 1300.0  # Observed healthy output ceiling
                         
-                        # ML health factor (0 to 1): normalize raw output
-                        # PdM dataset max is ~350 cycles
-                        ml_health = min(1.0, current_smooth_rul / 350.0)
+                        # ML health factor (0 to 1)
+                        ml_health = min(1.0, max(0.0, current_smooth_rul / MODEL_MAX))
                         
                         # Physics degradation factor based on how far from ideal
-                        v = reading.get("volt", 170)
-                        r = reading.get("rotate", 450)
-                        p = reading.get("pressure", 100)
-                        vib = reading.get("vibration", 40)
+                        v   = reading.get("volt",      170)
+                        r   = reading.get("rotate",    450)
+                        p   = reading.get("pressure",  100)
+                        vib = reading.get("vibration",  40)
                         
                         # Each parameter deviation reduces life
-                        volt_penalty = min(1.0, abs(v - 170) / 130.0)      # 0 at 170, 1 at 300 or 40
-                        rpm_penalty = min(1.0, abs(r - 450) / 1500.0)      # 0 at 450, 1 at 1950+
-                        press_penalty = min(1.0, abs(p - 100) / 100.0)     # 0 at 100, 1 at 200+
-                        vib_penalty = min(1.0, max(0, vib - 40) / 60.0)    # 0 at 40, 1 at 100+
+                        volt_penalty  = min(1.0, abs(v   - 170) / 130.0)   # 0 at 170V,   1 at 300V
+                        rpm_penalty   = min(1.0, abs(r   - 450) / 1500.0)  # 0 at 450RPM, 1 at 1950+
+                        press_penalty = min(1.0, abs(p   - 100) / 100.0)   # 0 at 100psi, 1 at 200+
+                        vib_penalty   = min(1.0, max(0, vib - 40) / 60.0)  # 0 at 40mm/s, 1 at 100+
                         
                         # Combined physics factor (weighted)
-                        physics_health = 1.0 - (volt_penalty * 0.2 + rpm_penalty * 0.2 + press_penalty * 0.25 + vib_penalty * 0.35)
+                        physics_health = 1.0 - (
+                            volt_penalty  * 0.20 +
+                            rpm_penalty   * 0.20 +
+                            press_penalty * 0.25 +
+                            vib_penalty   * 0.35
+                        )
                         physics_health = max(0.01, physics_health)
                         
-                        # Final RUL = ML score * physics factor * max life
+                        # Final combined health
                         combined_health = ml_health * physics_health
                         rul_years_float = MAX_LIFE_YEARS * combined_health
                         
-                        # Convert to hours then to years/days/hours
-                        rul_hours = rul_years_float * 8760.0  # hours per year
-                        rul_hours = max(0, min(MAX_LIFE_YEARS * 8760, rul_hours))
+                        # Convert to hours → years / days / hours
+                        rul_hours = rul_years_float * 8760.0
+                        rul_hours = max(0.0, min(MAX_LIFE_YEARS * 8760.0, rul_hours))
                         
                         rul_years = int(rul_hours // 8760)
                         remaining = rul_hours % 8760
-                        rul_days = int(remaining // 24)
-                        rul_hrs = int(remaining % 24)
+                        rul_days  = int(remaining // 24)
+                        rul_hrs   = int(remaining % 24)
                         
                         # Health percentage
                         health_pct = round(combined_health * 100, 1)
@@ -221,10 +220,10 @@ async def broadcast_sensor_data():
                     reading["rul"] = 0.0
                     reading["rul_hours"] = 0
                     reading["rul_years"] = 0
-                    reading["rul_days"] = 0
-                    reading["rul_hrs"] = 0
-                    reading["rul_display"] = "Calculating..."
-                    reading["health_pct"] = 100.0
+                    reading["rul_days"]  = 0
+                    reading["rul_hrs"]   = 0
+                    reading["rul_display"]  = "Calculating..."
+                    reading["health_pct"]   = None   # don't show bar until model is ready
                 
                 current_machine_state.update(reading)
 

@@ -1,0 +1,22 @@
+[Unit]
+Description=MachineWhisperer Backend (FastAPI)
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AI-Compressor-Predictive-Maintenance/backend
+ExecStart=/home/ubuntu/AI-Compressor-Predictive-Maintenance/venv/bin/python main.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mw-backend
+
+# Environment
+Environment=PYTHONUNBUFFERED=1
+EnvironmentFile=/home/ubuntu/AI-Compressor-Predictive-Maintenance/backend/.env
+
+[Install]
+WantedBy=multi-user.target

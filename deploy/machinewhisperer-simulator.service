@@ -1,0 +1,20 @@
+[Unit]
+Description=MachineWhisperer Machine Simulator
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/AI-Compressor-Predictive-Maintenance/machine_simulator
+ExecStart=/home/ubuntu/AI-Compressor-Predictive-Maintenance/venv/bin/python server.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=mw-simulator
+
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target
