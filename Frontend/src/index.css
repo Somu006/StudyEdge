@@ -460,3 +460,59 @@ body {
   background: #C8956C;
   color: white;
 }
+
+/* Visual Workflow Steps */
+.wo-workflow {
+  background: #FAF8F4;
+  border: 1px solid #E8DDD0;
+  border-radius: 12px;
+  padding: 14px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.workflow-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+
+.workflow-step {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+}
+
+.step-connector {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 16px;
+  padding-top: 4px;
+}
+
+.step-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: #C8956C;
+  border: 2px solid #E8DDD0;
+  flex-shrink: 0;
+}
+
+.step-line {
+  width: 2px;
+  flex: 1;
+  min-height: 16px;
+  background: linear-gradient(to bottom, #C8956C, #E8DDD0);
+  margin: 2px 0;
+}
+
+.step-content {
+  font-size: 12px;
+  line-height: 1.5;
+  color: #2C2416;
+  padding-bottom: 8px;
+  font-weight: 500;
+}

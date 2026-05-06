@@ -163,8 +163,11 @@ function App() {
       const json = await res.json()
       if (json.pdf_url) {
         window.open(json.pdf_url, '_blank')
+      } else {
+        alert('No PDF report available yet. Trigger a fault first — the AI agent generates a report for each anomaly.')
       }
     } catch (e) {
+      alert('Could not fetch report. Make sure the backend is running.')
       console.error(e)
     }
   }
@@ -205,6 +208,28 @@ function App() {
   }
 
   const latestReading = data.length > 0 ? data[data.length - 1] : null
+
+  // Parse recommended action into visual workflow steps
+  const parseWorkflowSteps = (action: string): string[] => {
+    if (!action) return ['No action specified']
+    // Remove prefix tags
+    let clean = action.replace(/^\[(AUTO-FIXED|REQUIRES HUMAN)\]\s*/i, '')
+    // Try splitting by common patterns
+    const steps = clean
+      .split(/(?:\.\s+(?=[A-Z]))|(?:\d+\.\s+)|(?:;\s+)/)
+      .map(s => s.trim())
+      .filter(s => s.length > 5)
+    if (steps.length <= 1) {
+      // Fallback: split long text into chunks
+      const words = clean.split(' ')
+      const chunks: string[] = []
+      for (let i = 0; i < words.length; i += 12) {
+        chunks.push(words.slice(i, i + 12).join(' '))
+      }
+      return chunks.slice(0, 5)
+    }
+    return steps.slice(0, 6) // max 6 steps for visual clarity
+  }
 
   const ChartCard = ({ title, dataKey, color }: { title: string, dataKey: keyof SensorData, color: string }) => (
     <div className={`chart-card-container ${isAnomaly ? 'anomaly' : ''}`}>
@@ -377,13 +402,23 @@ function App() {
                       </span>
                     </div>
                     <p className="wo-explanation">{wo.explanation?.substring(0, 200)}{wo.explanation?.length > 200 ? '...' : ''}</p>
-                    <div className="wo-action-box">
-                      <span className="wo-action-label">AI Recommended Action</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-                        <Wrench size={14} color="#C8956C" />
-                        <span className="wo-action-text">{wo.recommended_action}</span>
+                    
+                    {/* Visual Workflow Steps */}
+                    <div className="wo-workflow">
+                      <span className="wo-action-label">🤖 AI Recommended Workflow</span>
+                      <div className="workflow-steps">
+                        {parseWorkflowSteps(wo.recommended_action).map((step, idx) => (
+                          <div key={idx} className="workflow-step">
+                            <div className="step-connector">
+                              <div className="step-dot" />
+                              {idx < parseWorkflowSteps(wo.recommended_action).length - 1 && <div className="step-line" />}
+                            </div>
+                            <div className="step-content">{step}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
+
                     <div className="wo-footer">
                       <span>{wo.machine_id}</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>

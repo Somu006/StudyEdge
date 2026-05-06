@@ -339,6 +339,14 @@ async def handle_anomaly(reading):
         )
         db.add(new_wo)
         db.commit()
+        # Capture values before closing session (SQLAlchemy detaches after close)
+        wo_id         = new_wo.id
+        wo_machine_id = new_wo.machine_id
+        wo_fault_type = new_wo.fault_type
+        wo_severity   = new_wo.severity
+        wo_action     = new_wo.recommended_action
+        wo_explanation= new_wo.explanation
+        wo_created_at = str(new_wo.created_at)
         db.close()
 
         # Persist alert to DynamoDB
@@ -359,13 +367,13 @@ async def handle_anomaly(reading):
         # Upload work order reports to S3 (JSON + PDF)
         try:
             wo_dict = {
-                "id":                 str(new_wo.id),
-                "machine_id":         new_wo.machine_id,
-                "fault_type":         new_wo.fault_type,
-                "severity":           new_wo.severity,
-                "recommended_action": new_wo.recommended_action,
-                "explanation":        new_wo.explanation,
-                "created_at":         str(new_wo.created_at),
+                "id":                 str(wo_id),
+                "machine_id":         wo_machine_id,
+                "fault_type":         wo_fault_type,
+                "severity":           wo_severity,
+                "recommended_action": wo_action,
+                "explanation":        wo_explanation,
+                "created_at":         wo_created_at,
             }
             json_key = s3.upload_json_report(wo_dict)
             pdf_key  = s3.upload_pdf_report(wo_dict)
