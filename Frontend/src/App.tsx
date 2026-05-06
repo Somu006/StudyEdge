@@ -47,7 +47,7 @@ function App() {
 
   const fetchWorkOrders = async () => {
     try {
-      const res = await fetch('http://localhost:8000/api/work-orders')
+      const res = await fetch('http://54.89.167.234:8000/api/work-orders')
       const json = await res.json()
       setWorkOrders(json)
     } catch (e) {
@@ -58,7 +58,7 @@ function App() {
   useEffect(() => {
     fetchWorkOrders()
 
-    const ws = new WebSocket('ws://localhost:8000/ws/sensors')
+    const ws = new WebSocket('ws://54.89.167.234:8000/ws/sensors')
 
     ws.onopen = () => {
       console.log('Connected to WebSocket')
@@ -96,7 +96,7 @@ function App() {
 
   const triggerAnomaly = async () => {
     try {
-      await fetch('http://localhost:8000/api/trigger-anomaly', { method: 'POST' })
+      await fetch('http://54.89.167.234:8000/api/trigger-anomaly', { method: 'POST' })
       // Poll for new work orders after a short delay to allow agent processing
       setTimeout(fetchWorkOrders, 3000)
       setTimeout(fetchWorkOrders, 6000)
@@ -107,7 +107,7 @@ function App() {
 
   const resetAnomaly = async () => {
     try {
-      await fetch('http://localhost:8000/api/reset-anomaly', { method: 'POST' })
+      await fetch('http://54.89.167.234:8000/api/reset-anomaly', { method: 'POST' })
       setIsAnomaly(false)
       fetchWorkOrders() // Clear the UI list immediately
     } catch (e) {
@@ -125,7 +125,7 @@ function App() {
     setIsChatLoading(true)
 
     try {
-      const res = await fetch('http://localhost:8000/api/chat', {
+      const res = await fetch('http://54.89.167.234:8000/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: userMessage })
