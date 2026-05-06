@@ -1,7 +1,15 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { AlertCircle, CheckCircle2, Activity, Bot, Wrench, ClipboardList, RefreshCcw } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Activity, Bot, Wrench, ClipboardList, RefreshCcw, Zap, Download, FileText } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
+
+const API_BASE = window.location.hostname === 'localhost' 
+  ? 'http://localhost:8000' 
+  : `http://${window.location.hostname}:8000`
+
+const WS_BASE = window.location.hostname === 'localhost'
+  ? 'ws://localhost:8000'
+  : `ws://${window.location.hostname}:8000`
 
 interface SensorData {
   machine_id: string;
@@ -17,7 +25,7 @@ interface SensorData {
   rul_days?: number;
   rul_hrs?: number;
   rul_display?: string;
-  health_pct?: number;
+  health_pct?: number | null;
 }
 
 interface WorkOrder {
@@ -31,23 +39,33 @@ interface WorkOrder {
   created_at: string;
 }
 
+interface AgentActivity {
+  timestamp: number;
+  step: string;
+  detail: string;
+  status: string;
+}
+
 function App() {
   const [data, setData] = useState<SensorData[]>([])
   const [workOrders, setWorkOrders] = useState<WorkOrder[]>([])
   const [isConnected, setIsConnected] = useState(false)
   const [isAnomaly, setIsAnomaly] = useState(false)
+  const [rightTab, setRightTab] = useState<'chat' | 'agent'>('chat')
+  const [agentActivity, setAgentActivity] = useState<AgentActivity[]>([])
   
   const [chatMessages, setChatMessages] = useState<{sender: 'user'|'agent', text: string}[]>([
-    {sender: 'agent', text: 'Hello! I am your AI maintenance assistant. How can I help you today?'}
+    {sender: 'agent', text: `👋 Hello! I'm your **AI Maintenance Assistant** powered by Claude Haiku 4.5.\n\nI can help you with:\n- Real-time machine health analysis\n- Fault diagnosis and root cause\n- Maintenance scheduling\n- Sensor data interpretation\n\nAsk me anything about the compressor!`}
   ])
   const [chatInput, setChatInput] = useState('')
   const [isChatLoading, setIsChatLoading] = useState(false)
+  const activityRef = useRef<HTMLDivElement>(null)
 
   const maxDataPoints = 30;
 
   const fetchWorkOrders = async () => {
     try {
-      const res = await fetch('http://54.89.167.234:8000/api/work-orders')
+      const res = await fetch(`${API_BASE}/api/work-orders`)
       const json = await res.json()
       setWorkOrders(json)
     } catch (e) {
@@ -55,13 +73,26 @@ function App() {
     }
   }
 
+  const fetchAgentActivity = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/api/agent/activity`)
+      const json = await res.json()
+      setAgentActivity(json.activity || [])
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
   useEffect(() => {
     fetchWorkOrders()
+    fetchAgentActivity()
 
-    const ws = new WebSocket('ws://54.89.167.234:8000/ws/sensors')
+    // Poll agent activity every 3 seconds
+    const activityInterval = setInterval(fetchAgentActivity, 3000)
+
+    const ws = new WebSocket(`${WS_BASE}/ws/sensors`)
 
     ws.onopen = () => {
-      console.log('Connected to WebSocket')
       setIsConnected(true)
     }
 
@@ -78,28 +109,39 @@ function App() {
 
       if (reading.is_anomaly && !isAnomaly) {
         setIsAnomaly(true)
-        setTimeout(fetchWorkOrders, 1500)
+        setRightTab('agent') // Auto-switch to agent tab on anomaly
+        setTimeout(fetchWorkOrders, 3000)
+        setTimeout(fetchAgentActivity, 2000)
       } else if (!reading.is_anomaly && isAnomaly) {
         setIsAnomaly(false)
       }
     }
 
     ws.onclose = () => {
-      console.log('Disconnected from WebSocket')
       setIsConnected(false)
     }
 
     return () => {
       ws.close()
+      clearInterval(activityInterval)
     }
   }, [isAnomaly])
 
+  // Auto-scroll agent activity
+  useEffect(() => {
+    if (activityRef.current) {
+      activityRef.current.scrollTop = activityRef.current.scrollHeight
+    }
+  }, [agentActivity])
+
   const triggerAnomaly = async () => {
     try {
-      await fetch('http://54.89.167.234:8000/api/trigger-anomaly', { method: 'POST' })
-      // Poll for new work orders after a short delay to allow agent processing
-      setTimeout(fetchWorkOrders, 3000)
-      setTimeout(fetchWorkOrders, 6000)
+      await fetch(`${API_BASE}/api/trigger-anomaly`, { method: 'POST' })
+      setRightTab('agent')
+      setTimeout(fetchWorkOrders, 4000)
+      setTimeout(fetchWorkOrders, 8000)
+      setTimeout(fetchAgentActivity, 2000)
+      setTimeout(fetchAgentActivity, 5000)
     } catch (e) {
       console.error(e)
     }
@@ -107,9 +149,21 @@ function App() {
 
   const resetAnomaly = async () => {
     try {
-      await fetch('http://54.89.167.234:8000/api/reset-anomaly', { method: 'POST' })
+      await fetch(`${API_BASE}/api/reset-anomaly`, { method: 'POST' })
       setIsAnomaly(false)
-      fetchWorkOrders() // Clear the UI list immediately
+      fetchWorkOrders()
+    } catch (e) {
+      console.error(e)
+    }
+  }
+
+  const downloadReport = async (machineId: string) => {
+    try {
+      const res = await fetch(`${API_BASE}/api/s3/latest/${machineId}`)
+      const json = await res.json()
+      if (json.pdf_url) {
+        window.open(json.pdf_url, '_blank')
+      }
     } catch (e) {
       console.error(e)
     }
@@ -125,7 +179,7 @@ function App() {
     setIsChatLoading(true)
 
     try {
-      const res = await fetch('http://54.89.167.234:8000/api/chat', {
+      const res = await fetch(`${API_BASE}/api/chat`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: userMessage })
@@ -144,6 +198,13 @@ function App() {
     const date = new Date(unixTime * 1000)
     return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}:${date.getSeconds().toString().padStart(2, '0')}`
   }
+
+  const formatActivityTime = (ts: number) => {
+    const d = new Date(ts * 1000)
+    return `${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}:${d.getSeconds().toString().padStart(2,'0')}`
+  }
+
+  const latestReading = data.length > 0 ? data[data.length - 1] : null
 
   const ChartCard = ({ title, dataKey, color }: { title: string, dataKey: keyof SensorData, color: string }) => (
     <div className={`chart-card-container ${isAnomaly ? 'anomaly' : ''}`}>
@@ -197,27 +258,33 @@ function App() {
     <div className={`app-root ${isAnomaly ? 'anomaly-active' : ''}`}>
       {isAnomaly && <div className="anomaly-overlay" />}
       
-      {/* Header Section */}
+      {/* Header */}
       <header className="app-header">
         <h1 className="app-title">
           <Activity size={28} color="#C8956C" strokeWidth={2.5} />
           MachineWhisperer
         </h1>
         
-        <div style={{ padding: '8px 16px', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 500, backgroundColor: isConnected ? '#F2EDE4' : '#FFF0E8', color: isConnected ? '#8B6F5E' : '#9E3E15' }}>
-          <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isConnected ? '#C8956C' : '#D35400', animation: isConnected ? 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none' }}></div>
-          {isConnected ? 'Sensors Online' : 'Sensors Offline'}
+        <div style={{ display: 'flex', alignItems: 'center', gap: '16px' }}>
+          <div style={{ fontSize: '12px', color: '#A98C78', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <Zap size={14} />
+            Claude Haiku 4.5 + LangGraph
+          </div>
+          <div style={{ padding: '8px 16px', borderRadius: '9999px', display: 'flex', alignItems: 'center', gap: '10px', fontSize: '14px', fontWeight: 500, backgroundColor: isConnected ? '#F2EDE4' : '#FFF0E8', color: isConnected ? '#8B6F5E' : '#9E3E15' }}>
+            <div style={{ width: '8px', height: '8px', borderRadius: '50%', backgroundColor: isConnected ? '#C8956C' : '#D35400', animation: isConnected ? 'pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite' : 'none' }}></div>
+            {isConnected ? 'Sensors Online' : 'Sensors Offline'}
+          </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main */}
       <main className="app-main">
         
-        {/* Left panel (charts area) */}
+        {/* Left panel */}
         <div className="left-panel custom-scrollbar">
 
           {/* Status Card */}
-          <div style={{ gridColumn: '1 / -1', background: '#FFFFFF', border: '1px solid #E8DDD0', borderLeft: '3px solid #C8956C', borderRadius: '16px', padding: '24px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ gridColumn: '1 / -1', background: '#FFFFFF', border: '1px solid #E8DDD0', borderLeft: `3px solid ${isAnomaly ? '#D35400' : '#C8956C'}`, borderRadius: '16px', padding: '24px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
               <div style={{ width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isAnomaly ? '#FFF0E8' : '#F2EDE4', color: isAnomaly ? '#D35400' : '#8B6F5E' }}>
@@ -228,7 +295,7 @@ function App() {
                   {isAnomaly ? 'Anomaly Detected' : 'All Systems Nominal'}
                 </h2>
                 <p style={{ color: '#7A6A58', fontSize: '15px', margin: 0 }}>
-                  {isAnomaly ? 'Agent is analyzing the fault...' : 'Machine operating within normal parameters.'}
+                  {isAnomaly ? 'AI Agent is diagnosing the fault and generating a work order...' : 'Machine operating within normal parameters. AI monitoring active.'}
                 </p>
               </div>
             </div>
@@ -239,54 +306,52 @@ function App() {
                   onClick={triggerAnomaly} 
                   className="active:scale-95 active:brightness-90 active:shadow-inner transition-all duration-150 active:ring-4 active:ring-[#C8956C]/50 focus:outline-none"
                   style={{ background: '#C8956C', color: 'white', borderRadius: '8px', padding: '12px 28px', fontWeight: 500, fontSize: '15px', border: 'none', cursor: 'pointer' }}>
-                  Simulate Fault
+                  ⚡ Simulate Fault
                 </button>
                 <button 
                   onClick={resetAnomaly} 
                   className="active:scale-95 active:brightness-90 active:shadow-inner transition-all duration-150 active:ring-4 active:ring-[#C8956C]/50 focus:outline-none"
                   style={{ background: 'transparent', border: '1.5px solid #C8956C', color: '#C8956C', borderRadius: '8px', padding: '12px 28px', fontWeight: 500, fontSize: '15px', cursor: 'pointer' }}>
-                  Reset Sensors
+                  Reset
                 </button>
               </div>
 
-              {data.length > 0 && data[data.length - 1].rul_years !== undefined && (
+              {latestReading && latestReading.rul_years !== undefined && latestReading.health_pct !== null && latestReading.health_pct !== undefined && (
                 <div style={{ background: '#FAF8F4', border: '1px solid #E0D5C8', borderRadius: '16px', padding: '20px 32px', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', marginLeft: '16px' }}>
                   <span style={{ fontSize: '13px', fontWeight: 600, color: '#7A6A58', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: '4px' }}>Remaining Useful Life</span>
                   <div style={{ fontSize: '32px', fontWeight: 300, color: '#2C2416', lineHeight: 1.2, display: 'flex', alignItems: 'baseline', gap: '4px' }}>
-                    <span style={{ fontWeight: 600 }}>{data[data.length - 1].rul_years ?? 0}</span>
+                    <span style={{ fontWeight: 600 }}>{latestReading.rul_years ?? 0}</span>
                     <span style={{ fontSize: '14px', color: '#7A6A58' }}>yr</span>
-                    <span style={{ fontWeight: 600, marginLeft: '4px' }}>{data[data.length - 1].rul_days ?? 0}</span>
+                    <span style={{ fontWeight: 600, marginLeft: '4px' }}>{latestReading.rul_days ?? 0}</span>
                     <span style={{ fontSize: '14px', color: '#7A6A58' }}>days</span>
-                    <span style={{ fontWeight: 600, marginLeft: '4px' }}>{data[data.length - 1].rul_hrs ?? 0}</span>
+                    <span style={{ fontWeight: 600, marginLeft: '4px' }}>{latestReading.rul_hrs ?? 0}</span>
                     <span style={{ fontSize: '14px', color: '#7A6A58' }}>hrs</span>
                   </div>
-                  {data[data.length - 1].health_pct !== undefined && (
-                    <div style={{ marginTop: '8px', width: '100%' }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
-                        <span style={{ fontSize: '11px', color: '#7A6A58' }}>Machine Health</span>
-                        <span style={{ fontSize: '11px', fontWeight: 600, color: (data[data.length - 1].health_pct ?? 0) > 50 ? '#2D6A4F' : (data[data.length - 1].health_pct ?? 0) > 20 ? '#C9622F' : '#DC2626' }}>{data[data.length - 1].health_pct}%</span>
-                      </div>
-                      <div style={{ height: '6px', background: '#E8E2D9', borderRadius: '3px', overflow: 'hidden' }}>
-                        <div style={{ height: '100%', width: `${data[data.length - 1].health_pct ?? 0}%`, background: (data[data.length - 1].health_pct ?? 0) > 50 ? '#2D6A4F' : (data[data.length - 1].health_pct ?? 0) > 20 ? '#C9622F' : '#DC2626', borderRadius: '3px', transition: 'width 1s ease' }}></div>
-                      </div>
+                  <div style={{ marginTop: '8px', width: '100%' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#7A6A58' }}>Machine Health</span>
+                      <span style={{ fontSize: '11px', fontWeight: 600, color: (latestReading.health_pct ?? 0) > 50 ? '#2D6A4F' : (latestReading.health_pct ?? 0) > 20 ? '#C9622F' : '#DC2626' }}>{latestReading.health_pct}%</span>
                     </div>
-                  )}
+                    <div style={{ height: '6px', background: '#E8E2D9', borderRadius: '3px', overflow: 'hidden' }}>
+                      <div style={{ height: '100%', width: `${latestReading.health_pct ?? 0}%`, background: (latestReading.health_pct ?? 0) > 50 ? '#2D6A4F' : (latestReading.health_pct ?? 0) > 20 ? '#C9622F' : '#DC2626', borderRadius: '3px', transition: 'width 1s ease' }}></div>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
           </div>
           
-          <ChartCard title="Vibration" dataKey="vibration" color="#C8956C" />
-          <ChartCard title="Voltage" dataKey="volt" color="#8B6F5E" />
-          <ChartCard title="Pressure" dataKey="pressure" color="#A98C78" />
-          <ChartCard title="Rotation" dataKey="rotate" color="#D4A373" />
+          <ChartCard title="Vibration (mm/s)" dataKey="vibration" color="#C8956C" />
+          <ChartCard title="Voltage (V)" dataKey="volt" color="#8B6F5E" />
+          <ChartCard title="Pressure (psi)" dataKey="pressure" color="#A98C78" />
+          <ChartCard title="Rotation (RPM)" dataKey="rotate" color="#D4A373" />
 
-          {/* Work Orders Section */}
+          {/* Work Orders */}
           <div className="work-order-section">
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
               <h2 className="work-order-section-title">
                 <ClipboardList size={22} color="#C8956C" />
-                Active Maintenance Orders
+                AI-Generated Maintenance Orders
               </h2>
               <button 
                 onClick={fetchWorkOrders}
@@ -299,7 +364,7 @@ function App() {
             
             {workOrders.length === 0 ? (
               <div style={{ background: '#FFFFFF', border: '1px dashed #E8DDD0', borderRadius: '16px', padding: '40px', textAlign: 'center', color: '#A98C78' }}>
-                No active work orders. System is healthy.
+                No active work orders. AI agent is monitoring — will auto-generate on fault detection.
               </div>
             ) : (
               <div className="work-order-grid">
@@ -311,9 +376,9 @@ function App() {
                         {wo.severity}
                       </span>
                     </div>
-                    <p className="wo-explanation">{wo.explanation}</p>
+                    <p className="wo-explanation">{wo.explanation?.substring(0, 200)}{wo.explanation?.length > 200 ? '...' : ''}</p>
                     <div className="wo-action-box">
-                      <span className="wo-action-label">Recommended Action</span>
+                      <span className="wo-action-label">AI Recommended Action</span>
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
                         <Wrench size={14} color="#C8956C" />
                         <span className="wo-action-text">{wo.recommended_action}</span>
@@ -321,7 +386,12 @@ function App() {
                     </div>
                     <div className="wo-footer">
                       <span>{wo.machine_id}</span>
-                      <span>{new Date(wo.created_at).toLocaleTimeString()}</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                        <span>{new Date(wo.created_at).toLocaleTimeString()}</span>
+                        <button className="download-btn" onClick={() => downloadReport(wo.machine_id)}>
+                          <Download size={12} /> PDF
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ))}
@@ -330,46 +400,91 @@ function App() {
           </div>
         </div>
 
-        {/* Right panel (chat) */}
+        {/* Right panel — tabbed */}
         <div className="right-panel">
-          <div style={{ padding: '20px 16px', borderBottom: '1px solid #E8DDD0', display: 'flex', alignItems: 'center', gap: '12px', background: '#FFFFFF' }}>
-            <Bot size={24} color="#C8956C" />
-            <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '20px', fontWeight: 500, color: '#2C2416', margin: 0 }}>AI Assistant</h2>
+          {/* Tab switcher */}
+          <div className="tab-switcher">
+            <button className={`tab-btn ${rightTab === 'chat' ? 'active' : ''}`} onClick={() => setRightTab('chat')}>
+              <Bot size={16} /> AI Chat
+            </button>
+            <button className={`tab-btn ${rightTab === 'agent' ? 'active' : ''}`} onClick={() => setRightTab('agent')}>
+              <Zap size={16} /> Agent Activity
+              {agentActivity.length > 0 && (
+                <span style={{ background: '#C8956C', color: 'white', borderRadius: '9999px', fontSize: '10px', padding: '2px 6px', marginLeft: '4px' }}>
+                  {agentActivity.length}
+                </span>
+              )}
+            </button>
           </div>
-          
-          <div className="chat-messages custom-scrollbar">
-            {chatMessages.map((msg, i) => (
-              <div key={i} className={msg.sender === 'user' ? 'user-bubble' : 'ai-bubble'}>
-                {msg.sender === 'user' ? (
-                  msg.text
-                ) : (
-                  <ReactMarkdown>{msg.text}</ReactMarkdown>
+
+          {/* Chat Tab */}
+          {rightTab === 'chat' && (
+            <>
+              <div className="chat-messages custom-scrollbar">
+                {chatMessages.map((msg, i) => (
+                  <div key={i} className={msg.sender === 'user' ? 'user-bubble' : 'ai-bubble'}>
+                    {msg.sender === 'user' ? (
+                      msg.text
+                    ) : (
+                      <ReactMarkdown>{msg.text}</ReactMarkdown>
+                    )}
+                  </div>
+                ))}
+                {isChatLoading && (
+                  <div className="ai-bubble" style={{ opacity: 0.7 }}>
+                    <span style={{ display: 'inline-flex', gap: '4px' }}>
+                      <span style={{ animation: 'pulse 1s infinite' }}>●</span>
+                      <span style={{ animation: 'pulse 1s infinite 0.2s' }}>●</span>
+                      <span style={{ animation: 'pulse 1s infinite 0.4s' }}>●</span>
+                    </span>
+                    {' '}Analyzing with Claude Haiku 4.5...
+                  </div>
                 )}
               </div>
-            ))}
-            {isChatLoading && (
-              <div className="ai-bubble" style={{ opacity: 0.7 }}>
-                Analyzing system data...
-              </div>
-            )}
-          </div>
-          
-          <form onSubmit={handleSendChat} className="chat-input-bar">
-            <input 
-              type="text" 
-              value={chatInput}
-              onChange={e => setChatInput(e.target.value)}
-              placeholder="Ask about the machine..."
-              className="chat-input-field"
-            />
-            <button 
-              type="submit" 
-              disabled={isChatLoading || !chatInput.trim()}
-              className="chat-send-btn"
-            >
-              →
-            </button>
-          </form>
+              
+              <form onSubmit={handleSendChat} className="chat-input-bar">
+                <input 
+                  type="text" 
+                  value={chatInput}
+                  onChange={e => setChatInput(e.target.value)}
+                  placeholder="Ask about the machine..."
+                  className="chat-input-field"
+                />
+                <button 
+                  type="submit" 
+                  disabled={isChatLoading || !chatInput.trim()}
+                  className="chat-send-btn"
+                >
+                  →
+                </button>
+              </form>
+            </>
+          )}
+
+          {/* Agent Activity Tab */}
+          {rightTab === 'agent' && (
+            <div className="agent-activity-feed custom-scrollbar" ref={activityRef}>
+              {agentActivity.length === 0 ? (
+                <div style={{ textAlign: 'center', color: '#A98C78', padding: '40px 20px', fontSize: '14px' }}>
+                  <Zap size={32} color="#E8DDD0" style={{ margin: '0 auto 12px' }} />
+                  <p>No agent activity yet.</p>
+                  <p style={{ fontSize: '12px' }}>Click <strong>"Simulate Fault"</strong> to see the AI agent in action.</p>
+                </div>
+              ) : (
+                agentActivity.map((entry, i) => (
+                  <div key={i} className={`activity-entry ${entry.status}`}>
+                    <div>
+                      <span className="activity-time">{formatActivityTime(entry.timestamp)}</span>
+                    </div>
+                    <div>
+                      <div className="activity-step">{entry.step}</div>
+                      <div className="activity-detail">{entry.detail}</div>
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          )}
         </div>
 
       </main>

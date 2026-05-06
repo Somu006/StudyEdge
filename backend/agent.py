@@ -1,5 +1,6 @@
 import os
 import json
+import time
 import httpx
 import boto3
 from typing import TypedDict, Literal
@@ -22,6 +23,27 @@ NORMAL_PARAMS = {
     "pressure": 100.0,
     "vibration": 40.0,
 }
+
+# ─── Agent Activity Log (visible in frontend) ────────────────────
+agent_activity_log = []
+MAX_LOG_SIZE = 50
+
+def _log_activity(step: str, detail: str, status: str = "info"):
+    """Log agent activity for real-time frontend display."""
+    entry = {
+        "timestamp": time.time(),
+        "step": step,
+        "detail": detail,
+        "status": status,  # info, success, warning, error
+    }
+    agent_activity_log.append(entry)
+    if len(agent_activity_log) > MAX_LOG_SIZE:
+        agent_activity_log.pop(0)
+    print(f"[AGENT] [{status.upper()}] {step}: {detail}", flush=True)
+
+def get_agent_activity() -> list:
+    """Return the agent activity log for the frontend."""
+    return list(agent_activity_log)
 
 
 def _get_bedrock_client():
@@ -94,7 +116,8 @@ class AgentState(TypedDict):
 # NODE 1: Analyze sensor data → classify fault
 # ═══════════════════════════════════════════════════════════════════
 def analyze_sensor_data(state: AgentState):
-    print(f"[AGENT] Step 1: Analyzing fault for {state['machine_id']}...", flush=True)
+    _log_activity("🔍 Diagnosis", f"Analyzing fault for {state['machine_id']}...", "info")
+    _log_activity("📊 Sensors", f"V={state['volt']:.0f}V RPM={state['rotate']:.0f} P={state['pressure']:.0f}psi Vib={state['vibration']:.0f}mm/s", "info")
 
     prompt = f"""You are an industrial compressor diagnostic AI. Analyze these sensor readings:
 
@@ -115,10 +138,14 @@ Return ONLY a JSON object with keys: "fault_type", "severity", "can_auto_fix" (b
     try:
         response = _invoke_bedrock(prompt)
         res = _parse_json_response(response)
+        fault = res.get("fault_type", "System Anomaly")
+        sev   = res.get("severity", "P2")
+        fix   = res.get("can_auto_fix", False)
+        _log_activity("🎯 Classification", f"{fault} | Severity: {sev} | Auto-fixable: {'Yes' if fix else 'No'}", "success")
         return {
-            "fault_type": res.get("fault_type", "System Anomaly"),
-            "severity": res.get("severity", "P2"),
-            "can_auto_fix": res.get("can_auto_fix", False),
+            "fault_type": fault,
+            "severity": sev,
+            "can_auto_fix": fix,
         }
     except Exception as e:
         print(f"[AGENT] Analysis Error: {e}", flush=True)
@@ -133,7 +160,7 @@ Return ONLY a JSON object with keys: "fault_type", "severity", "can_auto_fix" (b
 # NODE 2: Auto-Fix → Send corrected params to simulator
 # ═══════════════════════════════════════════════════════════════════
 def auto_fix_machine(state: AgentState):
-    print(f"[AGENT] Step 2a: Attempting AUTO-FIX...", flush=True)
+    _log_activity("🔧 Auto-Fix", f"Attempting automatic parameter correction...", "info")
 
     prompt = f"""You are a compressor control system AI. The machine has a "{state['fault_type']}" fault.
 
@@ -178,7 +205,9 @@ No other text."""
         success = _send_params_to_simulator(corrected)
 
         if success:
-            print(f"[AGENT] AUTO-FIX APPLIED: {corrected}", flush=True)
+            _log_activity("✅ Auto-Fix Applied", f"V={corrected['volt']:.0f}V RPM={corrected['rotate']:.0f} P={corrected['pressure']:.0f} Vib={corrected['vibration']:.0f}", "success")
+        else:
+            _log_activity("⚠️ Auto-Fix", "Failed to send params to simulator", "warning")
 
         return {
             "auto_fix_applied": success,
@@ -204,7 +233,7 @@ No other text."""
 # NODE 3: Generate Manual Workflow → For problems AI can't fix
 # ═══════════════════════════════════════════════════════════════════
 def generate_manual_workflow(state: AgentState):
-    print(f"[AGENT] Step 2b: Generating MANUAL WORKFLOW (requires human)...", flush=True)
+    _log_activity("👷 Manual Workflow", f"Generating technician procedure for {state['fault_type']}...", "warning")
 
     prompt = f"""You are a senior maintenance engineer AI for an industrial screw air compressor.
 

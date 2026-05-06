@@ -23,7 +23,7 @@ from pure_lstm import StackedPureLSTM
 from sensor_simulator import SensorSimulator
 from database import engine, Base, get_db, SessionLocal
 from models import WorkOrder, SensorLog
-from agent import process_anomaly, process_chat_query
+from agent import process_anomaly, process_chat_query, get_agent_activity
 from notifier import send_anomaly_email
 from dynamo import dynamo
 from sns_notifier import sns
@@ -597,6 +597,32 @@ def dynamo_get_alerts(machine_id: str, limit: int = 20):
 @app.get("/api/dynamo/all-machines")
 def dynamo_all_machines():
     return dynamo.get_all_machine_states()
+
+
+@app.get("/api/agent/activity")
+def get_activity_log():
+    """Real-time agent decision log — shows what the AI is thinking."""
+    return {"activity": get_agent_activity(), "count": len(get_agent_activity())}
+
+
+@app.get("/api/agent/workflow-status")
+def get_workflow_status():
+    """Returns the current state of the AI agent system."""
+    latest = list(history)[-1] if len(history) > 0 else None
+    return {
+        "agent_model": os.environ.get("BEDROCK_MODEL_ID", "unknown"),
+        "agent_type": "LangGraph Multi-Node Workflow",
+        "nodes": ["analyze_sensor_data", "auto_fix_machine", "generate_manual_workflow"],
+        "routing": "conditional (can_auto_fix → auto_fix | manual_workflow)",
+        "total_anomalies_processed": len([a for a in get_agent_activity() if a["step"].startswith("🎯")]),
+        "auto_fixes_applied": len([a for a in get_agent_activity() if "Auto-Fix Applied" in a["step"]]),
+        "services": {
+            "bedrock": "Claude Haiku 4.5",
+            "dynamo": dynamo._ready,
+            "sns": sns.is_ready,
+            "s3": s3.is_ready,
+        },
+    }
 
 
 @app.get("/api/lambda/status")
