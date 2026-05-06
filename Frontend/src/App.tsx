@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts'
-import { AlertCircle, CheckCircle2, Activity, Bot, Wrench, ClipboardList, RefreshCcw, Zap, Download, FileText } from 'lucide-react'
+import { AlertCircle, CheckCircle2, Activity, Bot, Wrench, ClipboardList, RefreshCcw, Zap } from 'lucide-react'
 import ReactMarkdown from 'react-markdown'
 
 const API_BASE = window.location.hostname === 'localhost' 
@@ -153,21 +153,6 @@ function App() {
       setIsAnomaly(false)
       fetchWorkOrders()
     } catch (e) {
-      console.error(e)
-    }
-  }
-
-  const downloadReport = async (machineId: string) => {
-    try {
-      const res = await fetch(`${API_BASE}/api/s3/latest/${machineId}`)
-      const json = await res.json()
-      if (json.pdf_url) {
-        window.open(json.pdf_url, '_blank')
-      } else {
-        alert('No PDF report available yet. Trigger a fault first — the AI agent generates a report for each anomaly.')
-      }
-    } catch (e) {
-      alert('Could not fetch report. Make sure the backend is running.')
       console.error(e)
     }
   }
@@ -421,12 +406,7 @@ function App() {
 
                     <div className="wo-footer">
                       <span>{wo.machine_id}</span>
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                        <span>{new Date(wo.created_at).toLocaleTimeString()}</span>
-                        <button className="download-btn" onClick={() => downloadReport(wo.machine_id)}>
-                          <Download size={12} /> PDF
-                        </button>
-                      </div>
+                      <span>{new Date(wo.created_at).toLocaleTimeString()}</span>
                     </div>
                   </div>
                 ))}
