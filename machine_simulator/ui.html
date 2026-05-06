@@ -649,6 +649,26 @@ function connect() {
     outs.press.textContent = d.pressure.toFixed(1);
     outs.vib.textContent = d.vibration.toFixed(1);
 
+    // Sync sliders with setpoints (when agent or reset changes params)
+    if (d.setpoint_volt !== undefined) {
+      const sv = Math.round(d.setpoint_volt);
+      const sr = Math.round(d.setpoint_rotate);
+      const sp = Math.round(d.setpoint_pressure);
+      const svib = Math.round(d.setpoint_vibration);
+      if (Math.abs(parseFloat(sliders.volt.el.value) - sv) > 5) {
+        sliders.volt.el.value = sv; sliders.volt.label.textContent = sv;
+      }
+      if (Math.abs(parseFloat(sliders.rotate.el.value) - sr) > 20) {
+        sliders.rotate.el.value = sr; sliders.rotate.label.textContent = sr;
+      }
+      if (Math.abs(parseFloat(sliders.press.el.value) - sp) > 5) {
+        sliders.press.el.value = sp; sliders.press.label.textContent = sp;
+      }
+      if (Math.abs(parseFloat(sliders.vib.el.value) - svib) > 3) {
+        sliders.vib.el.value = svib; sliders.vib.label.textContent = svib;
+      }
+    }
+
     currentRpm = d.rotate;
 
     // Temperature display

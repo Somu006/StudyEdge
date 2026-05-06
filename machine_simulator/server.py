@@ -35,6 +35,11 @@ async def simulation_loop():
     print("[MachineSimulator] Simulation loop started.", flush=True)
     while True:
         reading = machine.tick()
+        # Include setpoints so UI sliders can sync when agent changes params
+        reading["setpoint_volt"]      = machine.voltage_setpoint
+        reading["setpoint_rotate"]    = machine.rotation_setpoint
+        reading["setpoint_pressure"]  = machine.pressure_setpoint
+        reading["setpoint_vibration"] = machine.vibration_setpoint
         last_reading = reading
 
         if active_connections:
@@ -58,7 +63,13 @@ async def startup():
 
 @app.get("/api/state")
 def get_state():
-    return last_reading if last_reading else machine.get_state()
+    state = last_reading if last_reading else machine.get_state()
+    # Include current setpoints so the UI can sync sliders
+    state["setpoint_volt"]      = machine.voltage_setpoint
+    state["setpoint_rotate"]    = machine.rotation_setpoint
+    state["setpoint_pressure"]  = machine.pressure_setpoint
+    state["setpoint_vibration"] = machine.vibration_setpoint
+    return state
 
 @app.post("/api/params")
 def set_params(params: ParamUpdate):
