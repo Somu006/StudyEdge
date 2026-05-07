@@ -222,6 +222,41 @@ function App() {
     return steps.slice(0, 6) // max 6 steps for visual clarity
   }
 
+  // Calculate component health from sensor readings
+  const getPartsHealth = (reading: SensorData) => {
+    const v   = reading.volt ?? 170
+    const r   = reading.rotate ?? 450
+    const p   = reading.pressure ?? 100
+    const vib = reading.vibration ?? 40
+
+    const clamp = (val: number) => Math.max(0, Math.min(100, Math.round(val)))
+    const getColor = (h: number) => h > 70 ? '#2D6A4F' : h > 40 ? '#B48400' : '#DC2626'
+    const getStatus = (h: number, good: string, warn: string, bad: string) => 
+      h > 70 ? good : h > 40 ? warn : bad
+
+    // Motor Health — voltage deviation + rotation
+    const motorHealth = clamp(100 - (Math.abs(v - 170) / 130) * 60 - (Math.abs(r - 450) / 1500) * 40)
+    // Bearing Health — vibration is the primary indicator
+    const bearingHealth = clamp(100 - (Math.max(0, vib - 30) / 70) * 100)
+    // Compressor Element — pressure + rotation + vibration
+    const compressorHealth = clamp(100 - (Math.abs(p - 100) / 100) * 50 - (Math.abs(r - 450) / 1500) * 30 - (Math.max(0, vib - 40) / 60) * 20)
+    // Electrical System — voltage stability
+    const electricalHealth = clamp(100 - (Math.abs(v - 170) / 130) * 100)
+    // Cooling System — vibration + pressure + voltage as proxy
+    const coolingHealth = clamp(100 - (Math.max(0, vib - 40) / 60) * 40 - (Math.abs(p - 100) / 100) * 30 - (Math.abs(v - 170) / 130) * 30)
+    // Oil Circuit — pressure + vibration
+    const oilHealth = clamp(100 - (Math.max(0, p - 120) / 80) * 50 - (Math.max(0, vib - 50) / 50) * 50)
+
+    return [
+      { name: 'Motor', icon: '⚡', health: motorHealth, color: getColor(motorHealth), status: getStatus(motorHealth, 'Operating normally', 'Voltage stress detected', 'Motor overload — inspect windings') },
+      { name: 'Bearings', icon: '🔩', health: bearingHealth, color: getColor(bearingHealth), status: getStatus(bearingHealth, 'Low vibration — healthy', 'Vibration increasing — monitor', 'High vibration — replace bearings') },
+      { name: 'Compressor Element', icon: '🌀', health: compressorHealth, color: getColor(compressorHealth), status: getStatus(compressorHealth, 'Compression normal', 'Efficiency declining', 'Screw element degraded') },
+      { name: 'Electrical', icon: '🔌', health: electricalHealth, color: getColor(electricalHealth), status: getStatus(electricalHealth, 'Supply voltage stable', 'Voltage drifting', 'Voltage critical — check supply') },
+      { name: 'Cooling System', icon: '❄️', health: coolingHealth, color: getColor(coolingHealth), status: getStatus(coolingHealth, 'Aftercooler effective', 'Cooling capacity reduced', 'Overheating risk — clean cooler') },
+      { name: 'Oil Circuit', icon: '🛢️', health: oilHealth, color: getColor(oilHealth), status: getStatus(oilHealth, 'Oil pressure normal', 'Oil flow restricted', 'Oil system failure — check separator') },
+    ]
+  }
+
   const ChartCard = ({ title, dataKey, color }: { title: string, dataKey: keyof SensorData, color: string }) => (
     <div className={`chart-card-container ${isAnomaly ? 'anomaly' : ''}`}>
       <h3 className="chart-card-title">{title}</h3>
@@ -378,6 +413,27 @@ function App() {
           <ChartCard title="Voltage (V)" dataKey="volt" color="#8B6F5E" />
           <ChartCard title="Pressure (psi)" dataKey="pressure" color="#A98C78" />
           <ChartCard title="Rotation (RPM)" dataKey="rotate" color="#D4A373" />
+
+          {/* Parts Health Panel */}
+          {latestReading && (
+            <div style={{ gridColumn: '1 / -1', background: '#FFFFFF', border: '1px solid #E8DDD0', borderRadius: '16px', padding: '24px 28px' }}>
+              <h3 style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#7A6A58', marginBottom: '16px' }}>⚙️ Component Health Monitor</h3>
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '14px' }}>
+                {getPartsHealth(latestReading).map((part, i) => (
+                  <div key={i} style={{ background: '#FAF8F4', border: `1px solid ${part.color}22`, borderLeft: `3px solid ${part.color}`, borderRadius: '10px', padding: '14px 16px' }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '6px' }}>
+                      <span style={{ fontSize: '13px', fontWeight: 600, color: '#2C2416' }}>{part.icon} {part.name}</span>
+                      <span style={{ fontSize: '11px', fontWeight: 700, color: part.color }}>{part.health}%</span>
+                    </div>
+                    <div style={{ height: '5px', background: '#E8E2D9', borderRadius: '3px', overflow: 'hidden', marginBottom: '6px' }}>
+                      <div style={{ height: '100%', width: `${part.health}%`, background: part.color, borderRadius: '3px', transition: 'width 1s ease' }} />
+                    </div>
+                    <div style={{ fontSize: '11px', color: '#7A6A58' }}>{part.status}</div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Work Orders */}
           <div className="work-order-section">
