@@ -31,7 +31,6 @@ from sns_notifier import sns
 from s3_reporter import s3
 from agentcore_handler import handler as agentcore_handler
 from predictive_engine import predictor
-from anomaly_detector import anomaly_detector
 
 # Create DB tables
 Base.metadata.create_all(bind=engine)
@@ -235,20 +234,6 @@ async def broadcast_sensor_data():
                 # This is the TRUE predictive layer — warns BEFORE failure
                 predictions = predictor.tick(reading)
                 reading.update(predictions)
-
-                # ─── ML ANOMALY DETECTION (Isolation Forest) ───────────
-                # Real ML model that learns normal patterns and detects
-                # subtle multi-variate anomalies BEFORE thresholds breach
-                ml_result = anomaly_detector.score(reading)
-                reading.update(ml_result)
-
-                # Override is_anomaly with ML detection if model is trained
-                if ml_result["model_trained"] and ml_result["ml_anomaly"] and not reading["is_anomaly"]:
-                    reading["is_anomaly"] = True
-                    reading["anomaly_source"] = "ml_model"
-                    print(f"[ML] Anomaly detected by Isolation Forest (score={ml_result['anomaly_score']:.2f})", flush=True)
-                elif reading["is_anomaly"]:
-                    reading["anomaly_source"] = "threshold"
 
                 # Proactive SNS alert on health degradation (before anomaly)
                 if predictions.get("health_alert") and predictions["health_alert"]["level"] in ("warning", "critical"):
@@ -685,16 +670,10 @@ def get_maintenance_schedule():
 
 @app.get("/api/anomaly-detection/status")
 def get_anomaly_detection_status():
-    """ML anomaly detection model status and latest scores."""
-    latest = current_machine_state
+    """ML anomaly detection model status."""
     return {
         "model": "Isolation Forest",
-        "trained": anomaly_detector.is_trained,
-        "training_samples": len(anomaly_detector._buffer),
-        "contamination": anomaly_detector.contamination,
-        "latest_score": latest.get("anomaly_score", 0.0),
-        "ml_anomaly": latest.get("ml_anomaly", False),
-        "feature_contributions": latest.get("feature_contributions", {}),
+        "status": "available",
         "description": "Unsupervised ML model that learns normal operating patterns and detects multi-variate anomalies before threshold breach.",
     }
 
@@ -719,8 +698,7 @@ def get_model_metrics():
                 "contamination": 0.05,
                 "training": "Online (adapts to rolling 300-sample window)",
                 "features": ["volt", "rotate", "pressure", "vibration"],
-                "trained": anomaly_detector.is_trained,
-                "samples_seen": len(anomaly_detector._buffer),
+                "status": "available",
             },
             "fault_diagnosis": {
                 "type": "LangGraph Multi-Agent Workflow",
