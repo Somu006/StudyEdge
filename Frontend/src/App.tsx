@@ -242,8 +242,6 @@ function App() {
     const compressorHealth = clamp(100 - (Math.abs(p - 100) / 100) * 50 - (Math.abs(r - 450) / 1500) * 30 - (Math.max(0, vib - 40) / 60) * 20)
     // Electrical System — voltage stability
     const electricalHealth = clamp(100 - (Math.abs(v - 170) / 130) * 100)
-    // Cooling System — vibration + pressure + voltage as proxy
-    const coolingHealth = clamp(100 - (Math.max(0, vib - 40) / 60) * 40 - (Math.abs(p - 100) / 100) * 30 - (Math.abs(v - 170) / 130) * 30)
     // Oil Circuit — pressure + vibration
     const oilHealth = clamp(100 - (Math.max(0, p - 120) / 80) * 50 - (Math.max(0, vib - 50) / 50) * 50)
 
@@ -252,7 +250,6 @@ function App() {
       { name: 'Bearings', icon: '🔩', health: bearingHealth, color: getColor(bearingHealth), status: getStatus(bearingHealth, 'Low vibration — healthy', 'Vibration increasing — monitor', 'High vibration — replace bearings') },
       { name: 'Compressor Element', icon: '🌀', health: compressorHealth, color: getColor(compressorHealth), status: getStatus(compressorHealth, 'Compression normal', 'Efficiency declining', 'Screw element degraded') },
       { name: 'Electrical', icon: '🔌', health: electricalHealth, color: getColor(electricalHealth), status: getStatus(electricalHealth, 'Supply voltage stable', 'Voltage drifting', 'Voltage critical — check supply') },
-      { name: 'Cooling System', icon: '❄️', health: coolingHealth, color: getColor(coolingHealth), status: getStatus(coolingHealth, 'Aftercooler effective', 'Cooling capacity reduced', 'Overheating risk — clean cooler') },
       { name: 'Oil Circuit', icon: '🛢️', health: oilHealth, color: getColor(oilHealth), status: getStatus(oilHealth, 'Oil pressure normal', 'Oil flow restricted', 'Oil system failure — check separator') },
     ]
   }
