@@ -31,6 +31,8 @@ from sns_notifier import sns
 from s3_reporter import s3
 from agentcore_handler import handler as agentcore_handler
 from predictive_engine import predictor
+from anomaly_detector import anomaly_detector
+from cost_analyzer import cost_analyzer
 
 # Create DB tables
 Base.metadata.create_all(bind=engine)
@@ -235,6 +237,20 @@ async def broadcast_sensor_data():
                 predictions = predictor.tick(reading)
                 reading.update(predictions)
 
+                # ─── ML ANOMALY DETECTION (Isolation Forest) ───────────
+                # Real ML model that learns normal patterns and detects
+                # subtle multi-variate anomalies BEFORE thresholds breach
+                ml_result = anomaly_detector.score(reading)
+                reading.update(ml_result)
+
+                # Override is_anomaly with ML detection if model is trained
+                if ml_result["model_trained"] and ml_result["ml_anomaly"] and not reading["is_anomaly"]:
+                    reading["is_anomaly"] = True
+                    reading["anomaly_source"] = "ml_model"
+                    print(f"[ML] Anomaly detected by Isolation Forest (score={ml_result['anomaly_score']:.2f})", flush=True)
+                elif reading["is_anomaly"]:
+                    reading["anomaly_source"] = "threshold"
+
                 # Proactive SNS alert on health degradation (before anomaly)
                 if predictions.get("health_alert") and predictions["health_alert"]["level"] in ("warning", "critical"):
                     alert_level = predictions["health_alert"]["level"]
@@ -422,6 +438,22 @@ async def handle_anomaly(reading):
             print("[ANOMALY] Agent AUTO-FIXED the problem. Work order saved.", flush=True)
         else:
             print("[ANOMALY] Agent generated MANUAL WORKFLOW. Work order saved.", flush=True)
+
+        # ─── COST ANALYSIS ─────────────────────────────────────────
+        # Calculate financial impact and ROI of predictive maintenance
+        try:
+            cost_result = cost_analyzer.analyze(
+                fault_type  = result.get("fault_type", "Unknown"),
+                severity    = result.get("severity", "P2"),
+                health_pct  = reading.get("health_pct", 50.0) or 50.0,
+                rul_hours   = reading.get("rul_hours", 0) or 0,
+                auto_fixed  = auto_fixed,
+            )
+            print(f"[COST] Savings: ₹{cost_result['savings']:,} | ROI: {cost_result['roi_percent']}% | {cost_result['urgency'].upper()}", flush=True)
+            from agent import _log_activity
+            _log_activity("💰 Cost Analysis", f"Preventive: ₹{cost_result['preventive_cost']:,} vs Failure: ₹{cost_result['corrective_cost']:,} | Savings: ₹{cost_result['savings']:,} ({cost_result['roi_percent']}% ROI)", "success")
+        except Exception as e:
+            print(f"[COST] Error: {e}", flush=True)
         
         # Send email notification
         try:
@@ -665,6 +697,108 @@ def get_maintenance_schedule():
             if summary["maintenance_due"]
             else "Monitoring — insufficient data for prediction."
         ),
+    }
+
+
+@app.get("/api/anomaly-detection/status")
+def get_anomaly_detection_status():
+    """ML anomaly detection model status and latest scores."""
+    latest = current_machine_state
+    return {
+        "model": "Isolation Forest",
+        "trained": anomaly_detector.is_trained,
+        "training_samples": len(anomaly_detector._buffer),
+        "contamination": anomaly_detector.contamination,
+        "latest_score": latest.get("anomaly_score", 0.0),
+        "ml_anomaly": latest.get("ml_anomaly", False),
+        "feature_contributions": latest.get("feature_contributions", {}),
+        "description": "Unsupervised ML model that learns normal operating patterns and detects multi-variate anomalies before threshold breach.",
+    }
+
+
+@app.get("/api/cost-analysis/{machine_id}")
+def get_cost_analysis(machine_id: str):
+    """Cost-benefit analysis for current machine state."""
+    health = current_machine_state.get("health_pct") or 100.0
+    rul_hours = current_machine_state.get("rul_hours") or 0
+    
+    # Determine fault type from latest work order or prediction status
+    fault_type = "Normal Wear"
+    severity = "P3"
+    if workOrders := get_work_orders.__wrapped__ if hasattr(get_work_orders, '__wrapped__') else None:
+        pass
+    
+    # Use prediction status to infer
+    pred_status = predictor.status
+    if pred_status == "critical":
+        fault_type = "Critical Degradation"
+        severity = "P1"
+    elif pred_status == "warning":
+        fault_type = "Accelerated Wear"
+        severity = "P2"
+    elif pred_status == "degrading":
+        fault_type = "Early Degradation"
+        severity = "P3"
+    
+    result = cost_analyzer.analyze(
+        fault_type=fault_type,
+        severity=severity,
+        health_pct=health,
+        rul_hours=rul_hours,
+        auto_fixed=False,
+    )
+    result["machine_id"] = machine_id
+    result["health_pct"] = health
+    return result
+
+
+@app.get("/api/model/metrics")
+def get_model_metrics():
+    """ML model performance metrics and architecture info."""
+    return {
+        "models": {
+            "rul_prediction": {
+                "type": "Stacked Pure LSTM (NumPy)",
+                "architecture": "2-layer LSTM → Dense(1)",
+                "input_features": 12,
+                "sequence_length": 24,
+                "training_dataset": "Microsoft Azure PdM (Predictive Maintenance)",
+                "output": "Remaining Useful Life (cycles)",
+                "normalization": "MinMaxScaler",
+            },
+            "anomaly_detection": {
+                "type": "Isolation Forest (scikit-learn)",
+                "n_estimators": 100,
+                "contamination": 0.05,
+                "training": "Online (adapts to rolling 300-sample window)",
+                "features": ["volt", "rotate", "pressure", "vibration"],
+                "trained": anomaly_detector.is_trained,
+                "samples_seen": len(anomaly_detector._buffer),
+            },
+            "fault_diagnosis": {
+                "type": "LangGraph Multi-Agent Workflow",
+                "llm": "Claude Haiku 4.5 (AWS Bedrock)",
+                "nodes": ["analyze_sensor_data", "auto_fix_machine", "generate_manual_workflow"],
+                "routing": "Conditional (can_auto_fix → auto_fix | manual_workflow)",
+                "capabilities": ["Fault classification", "Severity assessment", "Auto-remediation", "Workflow generation"],
+            },
+            "predictive_engine": {
+                "type": "Statistical Trend Analysis",
+                "methods": ["Rolling window comparison", "Degradation rate extrapolation", "Health threshold monitoring"],
+                "windows": {"short": "60 seconds", "long": "5 minutes"},
+            },
+            "cost_optimization": {
+                "type": "Decision Analysis Engine",
+                "methods": ["Preventive vs Corrective cost comparison", "Failure probability estimation", "ROI calculation"],
+            },
+        },
+        "agent_framework": {
+            "orchestrator": "LangGraph (StateGraph)",
+            "llm_provider": "AWS Bedrock",
+            "model_id": os.environ.get("BEDROCK_MODEL_ID", "unknown"),
+            "pattern": "Autonomous Multi-Agent with Conditional Routing",
+            "autonomy_level": "Full — auto-diagnoses, auto-fixes, auto-alerts",
+        },
     }
 
 
