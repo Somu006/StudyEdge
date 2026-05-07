@@ -40,5 +40,5 @@ An AI-powered industrial compressor predictive maintenance system using AWS and 
 
 \## GitHub Repository
 
-https://github.com/Somu006/AI-Compressor-Predictive-Maintenance
+https://github.com/Somu006/StudyEdge
 
