@@ -464,19 +464,11 @@ function App() {
                     </div>
                     <p className="wo-explanation">{wo.explanation?.substring(0, 200)}{wo.explanation?.length > 200 ? '...' : ''}</p>
                     
-                    {/* Visual Workflow Steps */}
-                    <div className="wo-workflow">
-                      <span className="wo-action-label">🤖 AI Recommended Workflow</span>
-                      <div className="workflow-steps">
-                        {parseWorkflowSteps(wo.recommended_action).map((step, idx) => (
-                          <div key={idx} className="workflow-step">
-                            <div className="step-connector">
-                              <div className="step-dot" />
-                              {idx < parseWorkflowSteps(wo.recommended_action).length - 1 && <div className="step-line" />}
-                            </div>
-                            <div className="step-content">{step}</div>
-                          </div>
-                        ))}
+                    <div className="wo-action-box">
+                      <span className="wo-action-label">Recommended Action</span>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+                        <Wrench size={14} color="#C8956C" />
+                        <span className="wo-action-text">{wo.recommended_action}</span>
                       </div>
                     </div>
 
