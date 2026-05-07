@@ -32,7 +32,6 @@ from s3_reporter import s3
 from agentcore_handler import handler as agentcore_handler
 from predictive_engine import predictor
 from anomaly_detector import anomaly_detector
-from cost_analyzer import cost_analyzer
 
 # Create DB tables
 Base.metadata.create_all(bind=engine)
@@ -438,22 +437,6 @@ async def handle_anomaly(reading):
             print("[ANOMALY] Agent AUTO-FIXED the problem. Work order saved.", flush=True)
         else:
             print("[ANOMALY] Agent generated MANUAL WORKFLOW. Work order saved.", flush=True)
-
-        # ─── COST ANALYSIS ─────────────────────────────────────────
-        # Calculate financial impact and ROI of predictive maintenance
-        try:
-            cost_result = cost_analyzer.analyze(
-                fault_type  = result.get("fault_type", "Unknown"),
-                severity    = result.get("severity", "P2"),
-                health_pct  = reading.get("health_pct", 50.0) or 50.0,
-                rul_hours   = reading.get("rul_hours", 0) or 0,
-                auto_fixed  = auto_fixed,
-            )
-            print(f"[COST] Savings: ₹{cost_result['savings']:,} | ROI: {cost_result['roi_percent']}% | {cost_result['urgency'].upper()}", flush=True)
-            from agent import _log_activity
-            _log_activity("💰 Cost Analysis", f"Preventive: ₹{cost_result['preventive_cost']:,} vs Failure: ₹{cost_result['corrective_cost']:,} | Savings: ₹{cost_result['savings']:,} ({cost_result['roi_percent']}% ROI)", "success")
-        except Exception as e:
-            print(f"[COST] Error: {e}", flush=True)
         
         # Send email notification
         try:
@@ -716,42 +699,6 @@ def get_anomaly_detection_status():
     }
 
 
-@app.get("/api/cost-analysis/{machine_id}")
-def get_cost_analysis(machine_id: str):
-    """Cost-benefit analysis for current machine state."""
-    health = current_machine_state.get("health_pct") or 100.0
-    rul_hours = current_machine_state.get("rul_hours") or 0
-    
-    # Determine fault type from latest work order or prediction status
-    fault_type = "Normal Wear"
-    severity = "P3"
-    if workOrders := get_work_orders.__wrapped__ if hasattr(get_work_orders, '__wrapped__') else None:
-        pass
-    
-    # Use prediction status to infer
-    pred_status = predictor.status
-    if pred_status == "critical":
-        fault_type = "Critical Degradation"
-        severity = "P1"
-    elif pred_status == "warning":
-        fault_type = "Accelerated Wear"
-        severity = "P2"
-    elif pred_status == "degrading":
-        fault_type = "Early Degradation"
-        severity = "P3"
-    
-    result = cost_analyzer.analyze(
-        fault_type=fault_type,
-        severity=severity,
-        health_pct=health,
-        rul_hours=rul_hours,
-        auto_fixed=False,
-    )
-    result["machine_id"] = machine_id
-    result["health_pct"] = health
-    return result
-
-
 @app.get("/api/model/metrics")
 def get_model_metrics():
     """ML model performance metrics and architecture info."""
@@ -786,10 +733,6 @@ def get_model_metrics():
                 "type": "Statistical Trend Analysis",
                 "methods": ["Rolling window comparison", "Degradation rate extrapolation", "Health threshold monitoring"],
                 "windows": {"short": "60 seconds", "long": "5 minutes"},
-            },
-            "cost_optimization": {
-                "type": "Decision Analysis Engine",
-                "methods": ["Preventive vs Corrective cost comparison", "Failure probability estimation", "ROI calculation"],
             },
         },
         "agent_framework": {

@@ -89,26 +89,12 @@ function App() {
     }
   }
 
-  const [costData, setCostData] = useState<any>(null)
-
-  const fetchCostData = async () => {
-    try {
-      const res = await fetch(`${API_BASE}/api/cost-analysis/Screw-Compressor-01`)
-      const json = await res.json()
-      setCostData(json)
-    } catch (e) {
-      console.error(e)
-    }
-  }
-
   useEffect(() => {
     fetchWorkOrders()
     fetchAgentActivity()
-    fetchCostData()
 
     // Poll agent activity every 3 seconds
     const activityInterval = setInterval(fetchAgentActivity, 3000)
-    const costInterval     = setInterval(fetchCostData, 10000)
 
     const ws = new WebSocket(`${WS_BASE}/ws/sensors`)
 
@@ -144,7 +130,6 @@ function App() {
     return () => {
       ws.close()
       clearInterval(activityInterval)
-      clearInterval(costInterval)
     }
   }, [isAnomaly])
 
@@ -270,46 +255,6 @@ function App() {
       { name: 'Cooling System', icon: '❄️', health: coolingHealth, color: getColor(coolingHealth), status: getStatus(coolingHealth, 'Aftercooler effective', 'Cooling capacity reduced', 'Overheating risk — clean cooler') },
       { name: 'Oil Circuit', icon: '🛢️', health: oilHealth, color: getColor(oilHealth), status: getStatus(oilHealth, 'Oil pressure normal', 'Oil flow restricted', 'Oil system failure — check separator') },
     ]
-  }
-
-  const CostPanel = ({ health }: { health: number }) => {
-    if (!costData) return <div style={{ color: '#A98C78', fontSize: '13px' }}>Loading cost analysis...</div>
-    
-    const urgencyColors: Record<string, string> = { low: '#2D6A4F', medium: '#92700C', high: '#C9622F', critical: '#DC2626' }
-    const urgColor = urgencyColors[costData.urgency] || '#7A6A58'
-    
-    return (
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '16px' }}>
-        {/* Preventive vs Corrective */}
-        <div style={{ background: '#F0FDF4', border: '1px solid #BBF7D0', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
-          <div style={{ fontSize: '11px', color: '#2D6A4F', fontWeight: 600, marginBottom: '4px' }}>PREVENTIVE (Act Now)</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#2D6A4F' }}>₹{(costData.preventive_cost || 0).toLocaleString()}</div>
-          <div style={{ fontSize: '11px', color: '#7A6A58', marginTop: '4px' }}>{costData.downtime_hours?.preventive || 4}h downtime</div>
-        </div>
-        <div style={{ background: '#FEF2F2', border: '1px solid #FECACA', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
-          <div style={{ fontSize: '11px', color: '#DC2626', fontWeight: 600, marginBottom: '4px' }}>CORRECTIVE (After Failure)</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#DC2626' }}>₹{(costData.corrective_cost || 0).toLocaleString()}</div>
-          <div style={{ fontSize: '11px', color: '#7A6A58', marginTop: '4px' }}>{costData.downtime_hours?.corrective || 16}h downtime</div>
-        </div>
-        <div style={{ background: '#FAF8F4', border: '1px solid #E8DDD0', borderRadius: '10px', padding: '16px', textAlign: 'center' }}>
-          <div style={{ fontSize: '11px', color: '#C8956C', fontWeight: 600, marginBottom: '4px' }}>YOU SAVE</div>
-          <div style={{ fontSize: '24px', fontWeight: 700, color: '#2D6A4F' }}>₹{(costData.savings || 0).toLocaleString()}</div>
-          <div style={{ fontSize: '11px', color: '#2D6A4F', fontWeight: 600, marginTop: '4px' }}>ROI: {costData.roi_percent || 0}%</div>
-        </div>
-        {/* Bottom row — urgency + recommendation */}
-        <div style={{ gridColumn: '1 / -1', display: 'flex', gap: '12px', alignItems: 'center', background: '#FAF8F4', borderRadius: '10px', padding: '12px 16px', border: `1px solid ${urgColor}33` }}>
-          <div style={{ background: urgColor, color: 'white', fontSize: '10px', fontWeight: 700, padding: '4px 10px', borderRadius: '6px', textTransform: 'uppercase', whiteSpace: 'nowrap' }}>
-            {costData.urgency || 'low'}
-          </div>
-          <div style={{ fontSize: '12px', color: '#2C2416', lineHeight: 1.4 }}>
-            {costData.recommendation || 'No maintenance needed.'}
-          </div>
-          <div style={{ marginLeft: 'auto', whiteSpace: 'nowrap', fontSize: '11px', color: '#7A6A58' }}>
-            Failure risk: <strong style={{ color: urgColor }}>{costData.failure_probability || 0}%</strong>
-          </div>
-        </div>
-      </div>
-    )
   }
 
   const ChartCard = ({ title, dataKey, color }: { title: string, dataKey: keyof SensorData, color: string }) => (
@@ -487,14 +432,6 @@ function App() {
                   </div>
                 ))}
               </div>
-            </div>
-          )}
-
-          {/* Cost Optimization Panel */}
-          {latestReading && (
-            <div style={{ gridColumn: '1 / -1', background: '#FFFFFF', border: '1px solid #E8DDD0', borderRadius: '16px', padding: '24px 28px' }}>
-              <h3 style={{ fontSize: '11px', fontWeight: 600, letterSpacing: '0.1em', textTransform: 'uppercase', color: '#7A6A58', marginBottom: '16px' }}>💰 Cost Optimization — Predictive vs Reactive</h3>
-              <CostPanel health={latestReading.health_pct ?? 100} />
             </div>
           )}
 
