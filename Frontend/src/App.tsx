@@ -26,6 +26,12 @@ interface SensorData {
   rul_hrs?: number;
   rul_display?: string;
   health_pct?: number | null;
+  prediction_status?: string;
+  trend_warnings?: {parameter: string; message: string; severity: string; prediction: string}[];
+  health_alert?: {level: string; message: string; health_pct: number} | null;
+  maintenance_due?: string | null;
+  days_to_maintenance?: number | null;
+  degradation_rate?: number;
 }
 
 interface WorkOrder {
@@ -294,19 +300,36 @@ function App() {
         <div className="left-panel custom-scrollbar">
 
           {/* Status Card */}
-          <div style={{ gridColumn: '1 / -1', background: '#FFFFFF', border: '1px solid #E8DDD0', borderLeft: `3px solid ${isAnomaly ? '#D35400' : '#C8956C'}`, borderRadius: '16px', padding: '24px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div style={{ gridColumn: '1 / -1', background: '#FFFFFF', border: '1px solid #E8DDD0', borderLeft: `3px solid ${isAnomaly ? '#D35400' : latestReading?.prediction_status === 'critical' ? '#D35400' : latestReading?.prediction_status === 'warning' ? '#B48400' : latestReading?.prediction_status === 'degrading' ? '#92700C' : '#C8956C'}`, borderRadius: '16px', padding: '24px 32px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
             
             <div style={{ display: 'flex', alignItems: 'center', gap: '24px' }}>
-              <div style={{ width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isAnomaly ? '#FFF0E8' : '#F2EDE4', color: isAnomaly ? '#D35400' : '#8B6F5E' }}>
-                {isAnomaly ? <AlertCircle size={20} strokeWidth={2.5} /> : <CheckCircle2 size={20} strokeWidth={2.5} />}
+              <div style={{ width: '40px', height: '40px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center', backgroundColor: isAnomaly ? '#FFF0E8' : latestReading?.prediction_status === 'critical' ? '#FFF0E8' : latestReading?.prediction_status === 'warning' ? '#FFF9E8' : latestReading?.prediction_status === 'degrading' ? '#FFFBE8' : '#F2EDE4', color: isAnomaly ? '#D35400' : latestReading?.prediction_status === 'critical' ? '#D35400' : latestReading?.prediction_status === 'warning' ? '#B48400' : latestReading?.prediction_status === 'degrading' ? '#92700C' : '#8B6F5E' }}>
+                {isAnomaly || latestReading?.prediction_status === 'critical' || latestReading?.prediction_status === 'warning' ? <AlertCircle size={20} strokeWidth={2.5} /> : <CheckCircle2 size={20} strokeWidth={2.5} />}
               </div>
               <div style={{ display: 'flex', flexDirection: 'column' }}>
                 <h2 style={{ fontFamily: "'Playfair Display', serif", fontSize: '26px', fontWeight: 500, color: '#2C2416', margin: '0 0 4px 0' }}>
-                  {isAnomaly ? 'Anomaly Detected' : 'All Systems Nominal'}
+                  {isAnomaly ? 'Anomaly Detected' 
+                    : latestReading?.prediction_status === 'critical' ? '⚠️ Critical Degradation'
+                    : latestReading?.prediction_status === 'warning' ? '⚠️ Predictive Warning'
+                    : latestReading?.prediction_status === 'degrading' ? '📉 Degradation Detected'
+                    : 'All Systems Nominal'}
                 </h2>
                 <p style={{ color: '#7A6A58', fontSize: '15px', margin: 0 }}>
-                  {isAnomaly ? 'AI Agent is diagnosing the fault and generating a work order...' : 'Machine operating within normal parameters. AI monitoring active.'}
+                  {isAnomaly ? 'AI Agent is diagnosing the fault and generating a work order...' 
+                    : latestReading?.prediction_status === 'critical' ? `Health at ${latestReading?.health_pct}% — failure predicted. Maintenance due: ${latestReading?.maintenance_due || 'calculating...'}`
+                    : latestReading?.prediction_status === 'warning' ? `Health declining. Schedule maintenance within ${latestReading?.days_to_maintenance || '?'} days.`
+                    : latestReading?.prediction_status === 'degrading' ? 'Early degradation trend detected. AI monitoring closely.'
+                    : 'Machine operating within normal parameters. AI predictive monitoring active.'}
                 </p>
+                {latestReading?.trend_warnings && latestReading.trend_warnings.length > 0 && !isAnomaly && (
+                  <div style={{ marginTop: '8px', display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                    {latestReading.trend_warnings.slice(0, 2).map((w, i) => (
+                      <div key={i} style={{ fontSize: '12px', color: w.severity === 'warning' ? '#C9622F' : '#92700C', background: w.severity === 'warning' ? '#FFF0E8' : '#FFFBE8', padding: '4px 10px', borderRadius: '6px' }}>
+                        📊 {w.message} → <em>{w.prediction}</em>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             

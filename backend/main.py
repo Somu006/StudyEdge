@@ -1,4 +1,5 @@
 import asyncio
+import time
 import uvicorn
 import httpx
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Depends
@@ -29,6 +30,7 @@ from dynamo import dynamo
 from sns_notifier import sns
 from s3_reporter import s3
 from agentcore_handler import handler as agentcore_handler
+from predictive_engine import predictor
 
 # Create DB tables
 Base.metadata.create_all(bind=engine)
@@ -226,6 +228,38 @@ async def broadcast_sensor_data():
                     reading["health_pct"]   = None   # don't show bar until model is ready
                 
                 current_machine_state.update(reading)
+
+                # ─── PREDICTIVE ENGINE ─────────────────────────────────
+                # Run trend analysis, health alerts, maintenance scheduling
+                # This is the TRUE predictive layer — warns BEFORE failure
+                predictions = predictor.tick(reading)
+                reading.update(predictions)
+
+                # Proactive SNS alert on health degradation (before anomaly)
+                if predictions.get("health_alert") and predictions["health_alert"]["level"] in ("warning", "critical"):
+                    alert_level = predictions["health_alert"]["level"]
+                    if not hasattr(predictor, '_last_sns_alert_time'):
+                        predictor._last_sns_alert_time = 0
+                    # Only send once per 5 minutes to avoid spam
+                    if time.time() - predictor._last_sns_alert_time > 300:
+                        predictor._last_sns_alert_time = time.time()
+                        try:
+                            sns.send_alert(
+                                machine_id=reading["machine_id"],
+                                fault_type=f"Predictive: Health {alert_level.upper()}",
+                                severity="P2" if alert_level == "warning" else "P1",
+                                recommended_action=predictions["health_alert"]["message"],
+                                explanation=f"Health at {predictions['health_alert']['health_pct']}%. Degradation rate: {predictions['degradation_rate']:.2f}%/hr. Maintenance due: {predictions.get('maintenance_due', 'N/A')}",
+                                volt=reading.get("volt", 0.0),
+                                rotate=reading.get("rotate", 0.0),
+                                pressure=reading.get("pressure", 0.0),
+                                vibration=reading.get("vibration", 0.0),
+                                auto_fixed=False,
+                                rul=reading.get("rul", 0.0),
+                            )
+                            print(f"[PREDICTIVE] Proactive {alert_level} alert sent via SNS", flush=True)
+                        except Exception as e:
+                            print(f"[PREDICTIVE] SNS error: {e}", flush=True)
 
                 # Persist latest state to DynamoDB
                 dynamo.upsert_machine_state(
@@ -605,6 +639,33 @@ def dynamo_get_alerts(machine_id: str, limit: int = 20):
 @app.get("/api/dynamo/all-machines")
 def dynamo_all_machines():
     return dynamo.get_all_machine_states()
+
+
+@app.get("/api/predictions")
+def get_predictions():
+    """Full predictive analytics — trend analysis, health alerts, maintenance schedule."""
+    return predictor.get_prediction_summary()
+
+
+@app.get("/api/predictions/maintenance")
+def get_maintenance_schedule():
+    """When is the next maintenance due based on RUL and degradation trends."""
+    summary = predictor.get_prediction_summary()
+    return {
+        "machine_id": current_machine_state.get("machine_id", "unknown"),
+        "maintenance_due": summary["maintenance_due"],
+        "days_to_maintenance": summary["days_to_maintenance"],
+        "degradation_rate_per_hour": summary["degradation_rate_per_hour"],
+        "current_health_pct": current_machine_state.get("health_pct"),
+        "recommendation": (
+            "No maintenance needed — machine is healthy."
+            if summary["status"] == "normal"
+            else f"Schedule maintenance by {summary['maintenance_due']}. "
+                 f"Health declining at {summary['degradation_rate_per_hour']}%/hr."
+            if summary["maintenance_due"]
+            else "Monitoring — insufficient data for prediction."
+        ),
+    }
 
 
 @app.get("/api/agent/activity")
